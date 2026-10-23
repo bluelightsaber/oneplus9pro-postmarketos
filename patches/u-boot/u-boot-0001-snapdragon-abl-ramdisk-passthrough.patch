@@ -1,0 +1,78 @@
+diff --git a/arch/arm/mach-snapdragon/board.c b/arch/arm/mach-snapdragon/board.c
+index 35735f15..2ca29c5d 100644
+--- a/arch/arm/mach-snapdragon/board.c
++++ b/arch/arm/mach-snapdragon/board.c
+@@ -21,6 +21,7 @@
+ #include <power/regulator.h>
+ #include <env.h>
+ #include <fdt_support.h>
++#include <fdtdec.h>
+ #include <init.h>
+ #include <linux/arm-smccc.h>
+ #include <linux/bug.h>
+@@ -204,6 +205,33 @@ static void qcom_psci_fixup(void *fdt)
+  * or for supporting quirky devices where it's easier to leave the downstream DT in place
+  * to improve ABL compatibility. Otherwise, we use the DT provided by ABL.
+  */
++/*
++ * Start of the ramdisk loaded by ABL (if any). Captured before relocation so
++ * that U-Boot can relocate itself below it instead of overwriting it.
++ */
++static u64 prevbl_rd_start __section(".data");
++static u64 prevbl_rd_end __section(".data");
++
++static void qcom_capture_prevbl_initrd(void *fdt)
++{
++	int chosen = fdt_path_offset(fdt, "/chosen");
++	const fdt32_t *prop;
++	int len;
++
++	if (chosen < 0)
++		return;
++	prop = fdt_getprop(fdt, chosen, "linux,initrd-start", &len);
++	if (prop && len == 8)
++		prevbl_rd_start = get_unaligned_be64(prop);
++	else if (prop && len == 4)
++		prevbl_rd_start = fdt32_to_cpu(*prop);
++	prop = fdt_getprop(fdt, chosen, "linux,initrd-end", &len);
++	if (prop && len == 8)
++		prevbl_rd_end = get_unaligned_be64(prop);
++	else if (prop && len == 4)
++		prevbl_rd_end = fdt32_to_cpu(*prop);
++}
++
+ int board_fdt_blob_setup(void **fdtp)
+ {
+ 	struct fdt_header *external_fdt, *internal_fdt;
+@@ -213,6 +241,8 @@ int board_fdt_blob_setup(void **fdtp)
+ 	internal_fdt = (struct fdt_header *)*fdtp;
+ 	external_fdt = (struct fdt_header *)get_prev_bl_fdt_addr();
+ 	external_valid = external_fdt && !fdt_check_header(external_fdt);
++	if (external_valid)
++		qcom_capture_prevbl_initrd(external_fdt);
+ 	internal_valid = !fdt_check_header(internal_fdt);
+ 
+ 	/*
+@@ -526,6 +556,22 @@ int board_late_init(void)
+ 	phys_addr_t addr;
+ 	struct fdt_header *fdt_blob = (struct fdt_header *)gd->fdt_blob;
+ 
++	/*
++	 * When chainloaded by ABL, export where ABL put the ramdisk (captured
++	 * before relocation, the ABL FDT may have been overwritten since) so a
++	 * payload can be booted from it without storage drivers, and keep it
++	 * out of the runtime allocations below.
++	 */
++	if (prevbl_rd_start && prevbl_rd_end > prevbl_rd_start) {
++		phys_addr_t rd = prevbl_rd_start;
++
++		env_set_hex("prevbl_initrd_start", prevbl_rd_start);
++		env_set_hex("prevbl_initrd_end", prevbl_rd_end);
++		if (lmb_alloc_mem(LMB_MEM_ALLOC_ADDR, 0, &rd, prevbl_rd_end - prevbl_rd_start, LMB_NONE))
++			log_warning("Could not reserve prevbl initrd %#llx-%#llx\n",
++				    prevbl_rd_start, prevbl_rd_end);
++	}
++
+ 	/* We need to be fairly conservative here as we support boards with just 1G of TOTAL RAM */
+ 	status |= !lmb_alloc(SZ_128M, &addr) ?
+ 		env_set_hex("loadaddr", addr) : 1;

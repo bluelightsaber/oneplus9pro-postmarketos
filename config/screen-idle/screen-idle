@@ -1,0 +1,18 @@
+#!/bin/sh
+# Blank the panel after TIMEOUT s without input and pause btop; any input event (keys, later touch) wakes it.
+TIMEOUT=3600; [ -r /etc/screen-idle.conf ] && . /etc/screen-idle.conf
+R=/run/screen-idle; mkdir -p $R; touch $R/activity; rm -f $R/blanked
+FB=/sys/class/graphics/fb0/blank
+btop_pid() { systemctl show -p MainPID --value btop-console.service 2>/dev/null; }
+wake() { echo 0 > $FB; p=$(btop_pid); [ "${p:-0}" -gt 0 ] && kill -CONT $p && kill -WINCH $p; rm -f $R/blanked; logger -t screen-idle wake; }
+sleep_panel() { p=$(btop_pid); [ "${p:-0}" -gt 0 ] && kill -STOP $p; echo 4 > $FB; touch $R/blanked; logger -t screen-idle blank; }
+watch_dev() { while dd if=$1 bs=24 count=1 status=none of=/dev/null 2>/dev/null; do touch $R/activity; [ -e $R/blanked ] && wake; done; }
+known=""
+while true; do
+  for d in /dev/input/event*; do case " $known " in *" $d "*) ;; *) watch_dev $d & known="$known $d";; esac; done
+  if [ ! -e $R/blanked ]; then
+    idle=$(( $(date +%s) - $(stat -c %Y $R/activity) ))
+    [ $idle -ge $TIMEOUT ] && sleep_panel
+  fi
+  sleep 5
+done

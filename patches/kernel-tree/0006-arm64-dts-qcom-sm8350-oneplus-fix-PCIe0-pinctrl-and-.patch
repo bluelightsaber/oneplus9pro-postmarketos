@@ -1,0 +1,46 @@
+From be0f857f0c652e5b5e7146aed579c78e4a1daabf Mon Sep 17 00:00:00 2001
+From: bluelightsaber <bluelightsaber@users.noreply.github.com>
+Date: Fri, 9 Oct 2026 09:08:11 +0200
+Subject: [PATCH] arm64: dts: qcom: sm8350-oneplus: fix PCIe0 pinctrl and
+ PERST# polarity
+
+- the pcie0 default pinctrl state listed gpio95 twice (pcie0_clkreqn and a
+  "sleep-pins" gpio entry), so applying it failed with -EINVAL and the
+  controller never probed;
+- PERST# is active low (as on sm8350-hdk); with GPIO_ACTIVE_HIGH the
+  endpoint was held in reset during link training ("Device not found").
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ arch/arm64/boot/dts/qcom/sm8350-oneplus-common.dtsi | 8 +-------
+ 1 file changed, 1 insertion(+), 7 deletions(-)
+
+diff --git a/arch/arm64/boot/dts/qcom/sm8350-oneplus-common.dtsi b/arch/arm64/boot/dts/qcom/sm8350-oneplus-common.dtsi
+index 3dc0a9840..d602748cf 100644
+--- a/arch/arm64/boot/dts/qcom/sm8350-oneplus-common.dtsi
++++ b/arch/arm64/boot/dts/qcom/sm8350-oneplus-common.dtsi
+@@ -563,7 +563,7 @@ &pcie0 {
+ 	pinctrl-0 = <&pcie0_default_state>;
+ 	pinctrl-names = "default";
+ 
+-	perst-gpios = <&tlmm 94 GPIO_ACTIVE_HIGH>;
++	perst-gpios = <&tlmm 94 GPIO_ACTIVE_LOW>;
+ 	wake-gpios = <&tlmm 96 GPIO_ACTIVE_HIGH>;
+ 
+ 	status = "okay";
+@@ -941,12 +941,6 @@ wake-pins {
+ 			bias-pull-up;
+ 		};
+ 
+-		sleep-pins {
+-			pins = "gpio95";
+-			function = "gpio";
+-			drive-strength = <2>;
+-			bias-pull-up;
+-		};
+ 	};
+ 
+ 	pcie1_default_state: pcie1-default-state {
+-- 
+2.53.0
+

@@ -1,0 +1,87 @@
+From 8c3a150cccc71e0d3fbc2f66c330f095f392c3d5 Mon Sep 17 00:00:00 2001
+From: bluelightsaber <bluelightsaber@users.noreply.github.com>
+Date: Fri, 9 Oct 2026 14:52:07 +0200
+Subject: [PATCH] arm64: dts: qcom: sm8350-oneplus-lemonadep: Bluetooth on
+ UART18 and QCA6490 rails
+
+- wcn6855-bt on uart18 (4-pin qup18 config as the vendor qupv3_se18_4uart), serial1 alias
+  (geni-serial: "Invalid line -19" without it);
+- vendor voltages for the QCA6490 rails and pmr735a_l7 (RF front-end) always on.
+Wi-Fi (ath11k WCN6855 hw1.1) and Bluetooth (wcnhpbtfw10/wcnhpnv10, BTFM.HSP.1.0.0-00978) work.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ .../dts/qcom/sm8350-oneplus-lemonadep.dts     | 53 +++++++++++++++++++
+ 1 file changed, 53 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/qcom/sm8350-oneplus-lemonadep.dts b/arch/arm64/boot/dts/qcom/sm8350-oneplus-lemonadep.dts
+index d95196e52..811022513 100644
+--- a/arch/arm64/boot/dts/qcom/sm8350-oneplus-lemonadep.dts
++++ b/arch/arm64/boot/dts/qcom/sm8350-oneplus-lemonadep.dts
+@@ -13,6 +13,10 @@ / {
+ 	compatible = "oneplus,lemonadep", "qcom,sm8350";
+ 	model = "OnePlus 9 Pro";
+ 
++	aliases {
++		serial1 = &uart18;
++	};
++
+ 	/* QCA6490 Wi-Fi/BT, WCN6855-compatible; supplies and GPIOs from the vendor cnss/bt nodes */
+ 	wcn6855-pmu {
+ 		compatible = "qcom,wcn6855-pmu";
+@@ -171,3 +175,52 @@ wlan_en: wlan-en-state {
+ 		bias-pull-down;
+ 	};
+ };
++
++/* vendor qupv3_se18_4uart: CTS/RTS needed for the BT HCI UART */
++&qup_uart18_default {
++	pins = "gpio68", "gpio69", "gpio70", "gpio71";
++};
++
++&uart18 {
++	status = "okay";
++
++	bluetooth {
++		compatible = "qcom,wcn6855-bt";
++
++		vddrfacmn-supply = <&vreg_pmu_rfa_cmn_0p8>;
++		vddaon-supply = <&vreg_pmu_aon_0p8>;
++		vddwlcx-supply = <&vreg_pmu_wlcx_0p8>;
++		vddwlmx-supply = <&vreg_pmu_wlmx_0p8>;
++		vddbtcmx-supply = <&vreg_pmu_btcmx_0p8>;
++		vddrfa0p8-supply = <&vreg_pmu_rfa_0p8>;
++		vddrfa1p2-supply = <&vreg_pmu_rfa_1p2>;
++		vddrfa1p7-supply = <&vreg_pmu_rfa_1p7>;
++
++		max-speed = <3200000>;
++	};
++};
++
++/*
++ * QCA6490 rails: the common ranges let these sit at their minimum (pmr735a_s2 at 500 mV); the chip needs
++ * the vendor cnss voltages. pmr735a_l7 feeds the RF front-end / antenna switch (always on, as on sm8350-hdk).
++ */
++&pm8350_s11 {
++	regulator-min-microvolt = <952000>;
++};
++
++&pm8350_s12 {
++	regulator-min-microvolt = <1352000>;
++};
++
++&pm8350c_s1 {
++	regulator-min-microvolt = <1880000>;
++};
++
++&pmr735a_s2 {
++	regulator-min-microvolt = <952000>;
++};
++
++&pmr735a_l7 {
++	regulator-always-on;
++	regulator-boot-on;
++};
+-- 
+2.53.0
+

@@ -1,0 +1,23 @@
+diff --git a/device/archived/firmware-oneplus-lemonade/APKBUILD b/device/archived/firmware-oneplus-lemonade/APKBUILD
+index 841eab1f42..688df003e8 100644
+--- a/device/archived/firmware-oneplus-lemonade/APKBUILD
++++ b/device/archived/firmware-oneplus-lemonade/APKBUILD
+@@ -2,7 +2,7 @@
+ maintainer=""
+ pkgname=firmware-oneplus-lemonade
+ pkgver=2
+-pkgrel=0
++pkgrel=1
+ _commit="338eca8f58f48a4ef60721c4eb65d0d950a6b394"
+ pkgdesc="Firmware files for OnePlus lemonade and lemonadep"
+ url="https://gitlab.com/sm8350-mainline/firmware-oneplus-lemonade"
+@@ -27,6 +27,9 @@ package() {
+ 	done
+ 
+ 	install -Dm644 "$srcdir/10-remoteproc-firmware.files" "$pkgdir/usr/share/mkinitfs/files/10-remoteproc-firmware.files"
++	# The modem firmware (~83 MB) does not fit in a boot.img that fastboot accepts;
++	# keep it in the rootfs but do not put it in the initramfs.
++	sed -i -e "/modem.mbn/d" -e "/ipa_fws.mbn/d" "$pkgdir/usr/share/mkinitfs/files/10-remoteproc-firmware.files"
+ 	install -Dm644 "$srcdir/20-bluetooth-firmware.files" "$pkgdir/usr/share/mkinitfs/files/20-bluetooth-firmware.files"
+ 	install -Dm644 "$srcdir/30-gpu-firmware.files" "$pkgdir/usr/share/mkinitfs/files/30-gpu-firmware.files"
+ 	install -Dm644 "$srcdir/40-touchscreen-firmware.files" "$pkgdir/usr/share/mkinitfs/files/40-touchscreen-firmware.files"

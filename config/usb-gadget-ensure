@@ -1,0 +1,47 @@
+#!/bin/sh
+# usb-gadget-ensure: fallback for the pmOS initramfs USB network gadget.
+# The initramfs creates configfs gadget g1 (NCM, 172.16.42.1) only if a UDC already
+# exists when it runs; if dwc3 probes later (seen with the GPU enabled) it silently
+# skips it and the phone is unreachable over USB. This recreates it from the rootfs.
+CFS=/sys/kernel/config/usb_gadget
+G=$CFS/g1
+IP=172.16.42.1/16
+FN=ncm.usb0
+
+log() { echo "usb-gadget-ensure: $*"; }
+
+# Already bound by the initramfs: nothing to do
+if [ -n "$(cat $G/UDC 2>/dev/null)" ]; then
+	log "gadget already bound to $(cat $G/UDC)"
+	exit 0
+fi
+
+# Wait up to 60 s for a USB device controller
+i=0
+while [ -z "$(ls /sys/class/udc 2>/dev/null)" ] && [ $i -lt 60 ]; do
+	sleep 1; i=$((i + 1))
+done
+UDC=$(ls /sys/class/udc 2>/dev/null | head -1)
+[ -n "$UDC" ] || { log "no UDC after ${i}s, giving up"; exit 1; }
+log "UDC $UDC appeared after ${i}s, creating gadget"
+
+[ -d $CFS ] || mount -t configfs none /sys/kernel/config 2>/dev/null
+mkdir -p $G
+echo 0x18D1 > $G/idVendor
+echo 0xD001 > $G/idProduct
+mkdir -p $G/strings/0x409
+echo OnePlus > $G/strings/0x409/manufacturer
+echo postmarketOS > $G/strings/0x409/serialnumber
+echo "OnePlus 9 Pro" > $G/strings/0x409/product
+mkdir -p $G/functions/$FN || { FN=rndis.usb0; mkdir -p $G/functions/$FN; }
+mkdir -p $G/configs/c.1/strings/0x409
+echo "USB network" > $G/configs/c.1/strings/0x409/configuration
+[ -e $G/configs/c.1/$FN ] || ln -s $G/functions/$FN $G/configs/c.1/
+echo "$UDC" > $G/UDC || { log "could not bind UDC"; exit 1; }
+
+IF=$(cat $G/functions/$FN/ifname 2>/dev/null)
+[ -n "$IF" ] || IF=usb0
+ip link set "$IF" up
+ip addr replace $IP dev "$IF"
+systemctl restart unudhcpd@usb0.service 2>/dev/null
+log "gadget up on $IF ($IP)"

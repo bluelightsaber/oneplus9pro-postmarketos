@@ -1,0 +1,54 @@
+From 3c36123ae52a455db754cc1549d422f402042ab9 Mon Sep 17 00:00:00 2001
+From: bluelightsaber <bluelightsaber@users.noreply.github.com>
+Date: Wed, 7 Oct 2026 20:34:41 +0200
+Subject: [PATCH] clk: qcom: dispcc-sm8250: don't park shared display RCGs at
+ init
+
+Since shared RCGs are parked at registration, probing dispcc on sm8350 cuts the MDP/AHB/rotator/vsync clocks of the display pipeline left running by the bootloader (simple-framebuffer) and the boot stalls. Use clk_rcg2_shared_no_init_park_ops, as dispcc-sc8280xp does.
+---
+ drivers/clk/qcom/dispcc-sm8250.c | 8 ++++----
+ 1 file changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/drivers/clk/qcom/dispcc-sm8250.c b/drivers/clk/qcom/dispcc-sm8250.c
+index fdc07323f..60c15987b 100644
+--- a/drivers/clk/qcom/dispcc-sm8250.c
++++ b/drivers/clk/qcom/dispcc-sm8250.c
+@@ -218,7 +218,7 @@ static struct clk_rcg2 disp_cc_mdss_ahb_clk_src = {
+ 		.parent_data = disp_cc_parent_data_3,
+ 		.num_parents = ARRAY_SIZE(disp_cc_parent_data_3),
+ 		.flags = CLK_SET_RATE_PARENT,
+-		.ops = &clk_rcg2_shared_ops,
++		.ops = &clk_rcg2_shared_no_init_park_ops,
+ 	},
+ };
+ 
+@@ -564,7 +564,7 @@ static struct clk_rcg2 disp_cc_mdss_mdp_clk_src = {
+ 		.parent_data = disp_cc_parent_data_5,
+ 		.num_parents = ARRAY_SIZE(disp_cc_parent_data_5),
+ 		.flags = CLK_SET_RATE_PARENT,
+-		.ops = &clk_rcg2_shared_ops,
++		.ops = &clk_rcg2_shared_no_init_park_ops,
+ 	},
+ };
+ 
+@@ -616,7 +616,7 @@ static struct clk_rcg2 disp_cc_mdss_rot_clk_src = {
+ 		.parent_data = disp_cc_parent_data_5,
+ 		.num_parents = ARRAY_SIZE(disp_cc_parent_data_5),
+ 		.flags = CLK_SET_RATE_PARENT,
+-		.ops = &clk_rcg2_shared_ops,
++		.ops = &clk_rcg2_shared_no_init_park_ops,
+ 	},
+ };
+ 
+@@ -631,7 +631,7 @@ static struct clk_rcg2 disp_cc_mdss_vsync_clk_src = {
+ 		.parent_data = disp_cc_parent_data_1,
+ 		.num_parents = ARRAY_SIZE(disp_cc_parent_data_1),
+ 		.flags = CLK_SET_RATE_PARENT,
+-		.ops = &clk_rcg2_shared_ops,
++		.ops = &clk_rcg2_shared_no_init_park_ops,
+ 	},
+ };
+ 
+-- 
+2.53.0
+

@@ -1,0 +1,18 @@
+/dts-v1/;
+/plugin/;
+
+/ {
+	model = "Qualcomm Technologies, Inc. Lahaina MTP lemonadep";
+	compatible = "qcom,lahaina-mtp", "qcom,lahaina", "qcom,mtp";
+	qcom,board-id = <0x10008 0>;
+	oplus,dtsi_no = <0x4d67 0x2085a>;
+	oem,project-id = <0x19815 0x2085a 0x20857 0x20858 0x20859>;
+	oem,project-codename = "lemonadep", "lemonadept";
+	oem,hw-id = <0xb 0xc 0xd 0x15 0x16 0x17 0x1f 0x20 0x21>;
+
+	fragment@0 {
+		target-path = "/";
+		__overlay__ {
+		};
+	};
+};

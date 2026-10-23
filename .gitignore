@@ -1,0 +1,8 @@
+# never commit these
+*.img
+*.bin
+*.mbn
+*.elf
+*password*
+firmware*/
+backups/

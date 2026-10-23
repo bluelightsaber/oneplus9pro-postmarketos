@@ -1,0 +1,46 @@
+diff --git a/drivers/soc/qcom/pmic_glink.c b/drivers/soc/qcom/pmic_glink.c
+index 914057331..aedbf7dd0 100644
+--- a/drivers/soc/qcom/pmic_glink.c
++++ b/drivers/soc/qcom/pmic_glink.c
+@@ -92,6 +92,12 @@ struct pmic_glink_client *devm_pmic_glink_register_client(struct device *dev,
+ 
+ 	devres_add(dev, client);
+ 
++	/* late client: tell it the current state, it would otherwise wait for a change */
++	mutex_lock(&pg->state_lock);
++	if (pg->client_state == SERVREG_SERVICE_STATE_UP && client->pdr_notify)
++		client->pdr_notify(client->priv, pg->client_state);
++	mutex_unlock(&pg->state_lock);
++
+ 	return client;
+ }
+ EXPORT_SYMBOL_GPL(devm_pmic_glink_register_client);
+@@ -188,6 +194,11 @@ static void pmic_glink_pdr_callback(int state, char *svc_path, void *priv)
+ 	mutex_unlock(&pg->state_lock);
+ }
+ 
++/* OnePlus 9 Pro: the ADSP firmware does not seem to announce charger_pd over PDR */
++static bool skip_pdr;
++module_param(skip_pdr, bool, 0444);
++MODULE_PARM_DESC(skip_pdr, "Consider the service up as soon as the GLINK channel exists");
++
+ static int pmic_glink_rpmsg_probe(struct rpmsg_device *rpdev)
+ {
+ 	struct pmic_glink *pg = __pmic_glink;
+@@ -203,6 +214,8 @@ static int pmic_glink_rpmsg_probe(struct rpmsg_device *rpdev)
+ 
+ 	mutex_lock(&pg->state_lock);
+ 	pg->ept = rpdev->ept;
++	if (skip_pdr)
++		pg->pdr_state = SERVREG_SERVICE_STATE_UP;
+ 	pmic_glink_state_notify_clients(pg);
+ 	mutex_unlock(&pg->state_lock);
+ 
+@@ -341,6 +354,7 @@ static const unsigned long pmic_glink_sm8450_client_mask = BIT(PMIC_GLINK_CLIENT
+ 							   BIT(PMIC_GLINK_CLIENT_UCSI);
+ 
+ static const struct of_device_id pmic_glink_of_match[] = {
++	{ .compatible = "qcom,sm8350-pmic-glink", .data = &pmic_glink_sm8450_client_mask },
+ 	{ .compatible = "qcom,sm8450-pmic-glink", .data = &pmic_glink_sm8450_client_mask },
+ 	{ .compatible = "qcom,sm8550-pmic-glink", .data = &pmic_glink_sm8450_client_mask },
+ 	{ .compatible = "qcom,pmic-glink" },

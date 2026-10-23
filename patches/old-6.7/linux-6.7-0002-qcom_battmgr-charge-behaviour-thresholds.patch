@@ -1,0 +1,164 @@
+diff --git a/drivers/power/supply/qcom_battmgr.c b/drivers/power/supply/qcom_battmgr.c
+index ec163d1bc..b866cffbe 100644
+--- a/drivers/power/supply/qcom_battmgr.c
++++ b/drivers/power/supply/qcom_battmgr.c
+@@ -24,6 +24,11 @@ enum qcom_battmgr_variant {
+ #define BATTMGR_BAT_STATUS		0x1
+ 
+ #define BATTMGR_REQUEST_NOTIFICATION	0x4
++#define BATTMGR_CHG_CTRL_LIMIT_EN	0x48
++#define CHARGE_CTRL_START_THR_MIN	40
++#define CHARGE_CTRL_START_THR_MAX	95
++#define CHARGE_CTRL_END_THR_MIN		50
++#define CHARGE_CTRL_END_THR_MAX		100
+ 
+ #define BATTMGR_NOTIFICATION		0x7
+ #define NOTIF_BAT_PROPERTY		0x30
+@@ -52,6 +57,7 @@ enum qcom_battmgr_variant {
+ #define BATT_CURR_NOW			9
+ #define BATT_CHG_CTRL_LIM		10
+ #define BATT_CHG_CTRL_LIM_MAX		11
++#define BATT_CHG_CTRL_EN		24
+ #define BATT_TEMP			12
+ #define BATT_TECHNOLOGY			13
+ #define BATT_CHG_COUNTER		14
+@@ -477,6 +483,90 @@ static int qcom_battmgr_bat_sc8280xp_update(struct qcom_battmgr *battmgr,
+ 	return ret;
+ }
+ 
++struct qcom_battmgr_charge_ctrl_request {
++	struct pmic_glink_hdr hdr;
++	__le32 enable;
++	__le32 target_soc;
++	__le32 delta_soc;
++};
++
++/* single instance on this platform: keep the last thresholds sent to the firmware */
++static int chg_ctrl_start = CHARGE_CTRL_START_THR_MIN;
++static int chg_ctrl_end = CHARGE_CTRL_END_THR_MAX;
++static int chg_behaviour = POWER_SUPPLY_CHARGE_BEHAVIOUR_AUTO;
++
++static int qcom_battmgr_set_charge_control(struct qcom_battmgr *battmgr, int start, int end)
++{
++	struct qcom_battmgr_charge_ctrl_request request = {
++		.hdr.owner = cpu_to_le32(PMIC_GLINK_OWNER_BATTMGR),
++		.hdr.type = cpu_to_le32(PMIC_GLINK_REQ_RESP),
++		.hdr.opcode = cpu_to_le32(BATTMGR_CHG_CTRL_LIMIT_EN),
++		.enable = cpu_to_le32(1),
++		.target_soc = cpu_to_le32(end),
++		.delta_soc = cpu_to_le32(end - start),
++	};
++	int ret;
++
++	mutex_lock(&battmgr->lock);
++	ret = qcom_battmgr_request(battmgr, &request, sizeof(request));
++	mutex_unlock(&battmgr->lock);
++	if (!ret) {
++		chg_ctrl_start = start;
++		chg_ctrl_end = end;
++	}
++	return ret;
++}
++
++static int qcom_battmgr_bat_is_writeable(struct power_supply *psy,
++					 enum power_supply_property psp)
++{
++	return psp == POWER_SUPPLY_PROP_CHARGE_CONTROL_START_THRESHOLD ||
++	       psp == POWER_SUPPLY_PROP_CHARGE_CONTROL_END_THRESHOLD ||
++	       psp == POWER_SUPPLY_PROP_CHARGE_BEHAVIOUR;
++}
++
++static int qcom_battmgr_bat_set_property(struct power_supply *psy,
++					 enum power_supply_property psp,
++					 const union power_supply_propval *pval)
++{
++	struct qcom_battmgr *battmgr = power_supply_get_drvdata(psy);
++	int start = chg_ctrl_start, end = chg_ctrl_end;
++
++	if (!battmgr->service_up)
++		return -EAGAIN;
++
++	switch (psp) {
++	case POWER_SUPPLY_PROP_CHARGE_BEHAVIOUR: {
++		int ret;
++
++		if (pval->intval != POWER_SUPPLY_CHARGE_BEHAVIOUR_AUTO &&
++		    pval->intval != POWER_SUPPLY_CHARGE_BEHAVIOUR_INHIBIT_CHARGE)
++			return -EINVAL;
++		mutex_lock(&battmgr->lock);
++		ret = qcom_battmgr_request_property(battmgr, BATTMGR_BAT_PROPERTY_SET,
++						    BATT_CHG_CTRL_EN,
++						    pval->intval == POWER_SUPPLY_CHARGE_BEHAVIOUR_AUTO);
++		mutex_unlock(&battmgr->lock);
++		if (!ret)
++			chg_behaviour = pval->intval;
++		return ret;
++	}
++	case POWER_SUPPLY_PROP_CHARGE_CONTROL_START_THRESHOLD:
++		start = clamp(pval->intval, CHARGE_CTRL_START_THR_MIN, CHARGE_CTRL_START_THR_MAX);
++		if (end <= start)
++			end = min(start + 5, CHARGE_CTRL_END_THR_MAX);
++		break;
++	case POWER_SUPPLY_PROP_CHARGE_CONTROL_END_THRESHOLD:
++		end = clamp(pval->intval, CHARGE_CTRL_END_THR_MIN, CHARGE_CTRL_END_THR_MAX);
++		if (start >= end)
++			start = max(end - 5, CHARGE_CTRL_START_THR_MIN);
++		break;
++	default:
++		return -EINVAL;
++	}
++	return qcom_battmgr_set_charge_control(battmgr, start, end);
++}
++
+ static int qcom_battmgr_bat_get_property(struct power_supply *psy,
+ 					 enum power_supply_property psp,
+ 					 union power_supply_propval *val)
+@@ -488,6 +578,19 @@ static int qcom_battmgr_bat_get_property(struct power_supply *psy,
+ 	if (!battmgr->service_up)
+ 		return -ENODEV;
+ 
++	if (psp == POWER_SUPPLY_PROP_CHARGE_CONTROL_START_THRESHOLD) {
++		val->intval = chg_ctrl_start;
++		return 0;
++	}
++	if (psp == POWER_SUPPLY_PROP_CHARGE_CONTROL_END_THRESHOLD) {
++		val->intval = chg_ctrl_end;
++		return 0;
++	}
++	if (psp == POWER_SUPPLY_PROP_CHARGE_BEHAVIOUR) {
++		val->intval = chg_behaviour;
++		return 0;
++	}
++
+ 	if (battmgr->variant == QCOM_BATTMGR_SC8280XP)
+ 		ret = qcom_battmgr_bat_sc8280xp_update(battmgr, psp);
+ 	else
+@@ -665,6 +768,9 @@ static const enum power_supply_property sm8350_bat_props[] = {
+ 	POWER_SUPPLY_PROP_TIME_TO_FULL_AVG,
+ 	POWER_SUPPLY_PROP_TIME_TO_EMPTY_AVG,
+ 	POWER_SUPPLY_PROP_POWER_NOW,
++	POWER_SUPPLY_PROP_CHARGE_CONTROL_START_THRESHOLD,
++	POWER_SUPPLY_PROP_CHARGE_CONTROL_END_THRESHOLD,
++	POWER_SUPPLY_PROP_CHARGE_BEHAVIOUR,
+ };
+ 
+ static const struct power_supply_desc sm8350_bat_psy_desc = {
+@@ -673,6 +779,8 @@ static const struct power_supply_desc sm8350_bat_psy_desc = {
+ 	.properties = sm8350_bat_props,
+ 	.num_properties = ARRAY_SIZE(sm8350_bat_props),
+ 	.get_property = qcom_battmgr_bat_get_property,
++	.set_property = qcom_battmgr_bat_set_property,
++	.property_is_writeable = qcom_battmgr_bat_is_writeable,
+ };
+ 
+ static int qcom_battmgr_ac_get_property(struct power_supply *psy,
+@@ -1252,7 +1360,9 @@ static void qcom_battmgr_sm8350_callback(struct qcom_battmgr *battmgr,
+ 			break;
+ 		}
+ 		break;
++	case BATTMGR_BAT_PROPERTY_SET:
+ 	case BATTMGR_REQUEST_NOTIFICATION:
++	case BATTMGR_CHG_CTRL_LIMIT_EN:
+ 		battmgr->error = 0;
+ 		break;
+ 	default:

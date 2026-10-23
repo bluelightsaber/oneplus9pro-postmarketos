@@ -1,0 +1,25 @@
+#!/bin/sh
+# usb-mode [host|device]  -> cambia el rol ahora (sin argumentos: muestra el actual)
+# usb-mode boot           -> aplica /etc/usb-mode.conf (servicio al arrancar)
+# usb-mode fallback N     -> en N s, si no hay red LAN, vuelve a device
+# Kernel nuevo: /sys/class/usb_role (dwc3 con usb-role-switch). 6.7: debugfs de dwc3.
+R=$(ls /sys/class/usb_role/*/role 2>/dev/null | head -1 | sed "s|role$||")
+if [ -n "$R" ]; then
+  get() { cat ${R}role; }
+  set_role() { echo "$1" > ${R}role; }
+else
+  M=/sys/kernel/debug/usb/a600000.usb/mode
+  mountpoint -q /sys/kernel/debug || mount -t debugfs none /sys/kernel/debug
+  get() { cat $M; }
+  set_role() { echo "$1" > $M; }
+fi
+lan_ok() { ip -4 -o addr show | awk '{print $2}' | grep -vqE '^(lo|usb0)$' && ip -4 -o addr show | grep -vE ' (lo|usb0) ' | grep -q 'inet '; }
+case "$1" in
+  host|device) set_role "$1"; echo "usb-mode: $1" ;;
+  boot) . /etc/usb-mode.conf
+        if [ "$MODE" = host ]; then set_role host; echo "usb-mode: host (arranque)"; exec "$0" fallback "${FALLBACK_SECS:-300}"; fi ;;
+  fallback) sleep "${2:-300}"
+        if [ "$(get)" = host ] && ! lan_ok; then set_role device; echo "usb-mode: sin red LAN tras ${2}s -> device"; fi ;;
+  "") get ;;
+  *) echo "uso: usb-mode [host|device|boot|fallback N]"; exit 1 ;;
+esac

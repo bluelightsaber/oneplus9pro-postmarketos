@@ -1,0 +1,12 @@
+[Unit]
+Description=Ensure the USB network gadget exists (fallback if the initramfs found no UDC)
+After=local-fs.target
+Before=usb-mode.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/usb-gadget-ensure
+TimeoutStartSec=90
+
+[Install]
+WantedBy=multi-user.target

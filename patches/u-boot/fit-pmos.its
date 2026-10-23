@@ -1,0 +1,11 @@
+/dts-v1/;
+/ {
+	description = "postmarketOS oneplus-lemonadep (mainline 6.7)";
+	#address-cells = <1>;
+	images {
+		ramdisk { description = "pmOS initramfs"; data = /incbin/("initramfs"); type = "ramdisk"; arch = "arm64"; os = "linux"; compression = "none"; hash { algo = "sha1"; }; };
+		fdt { description = "sm8350-oneplus-lemonadep"; data = /incbin/("orig.dtb"); type = "flat_dt"; arch = "arm64"; compression = "none"; hash { algo = "sha1"; }; };
+		kernel { description = "Linux"; data = /incbin/("Image"); type = "kernel_noload"; arch = "arm64"; os = "linux"; compression = "none"; load = <0>; entry = <0>; hash { algo = "sha1"; }; };
+	};
+	configurations { default = "conf"; conf { kernel = "kernel"; ramdisk = "ramdisk"; fdt = "fdt"; }; };
+};
