@@ -1,4 +1,6 @@
 #!/bin/bash
+# low CPU/IO priority so builds do not disturb other buildhost services (children and sudo/chroot inherit it)
+renice -n 19 -p $$ >/dev/null 2>&1; ionice -c3 -p $$ 2>/dev/null || true
 # Builds a boot image for the postmarketOS generic kernel installed in the buildroot chroot and installs
 # its modules on the phone (production must be running).
 #  DTB: raw lemonadep DTB from our 7.3 tree + modem disabled + USB OTG with role switch (default
@@ -38,6 +40,8 @@ BT=/soc@0/geniqup@8c0000/serial@890000/bluetooth
 if [ "$WIFI" != 1 ]; then UCMD="$UCMD && { fdtget \$D $BT compatible >/dev/null 2>&1 && fdtput -t s \$D $BT status disabled || true; }"; fi
 if [ "$WIFI" != 1 ]; then UCMD="$UCMD && { fdtget \$D $WF compatible >/dev/null 2>&1 && fdtput -r \$D $WF || true; } && { fdtget \$D $WP compatible >/dev/null 2>&1 && fdtput -r \$D $WP || true; }"; fi
 if [ "$GPU" = 1 ]; then UCMD="$UCMD && fdtput -t s \$D $G status okay && fdtput -t s \$D $G/zap-shader firmware-name qcom/sm8350/OnePlus/lemonade/a660_zap.mbn"; fi
+# EXTRA_UCMD: additional fdtput/fdtget commands on $D (the DTB), for test images (use NAME=...)
+[ -n "${EXTRA_UCMD:-}" ] && UCMD="$UCMD && $EXTRA_UCMD"
 pmbootstrap chroot -- sh -c "cd /home/pmos/v2 && D=$DT && fdtput -t s \$D /soc@0/remoteproc@4080000 status disabled && $UCMD && \
   echo \"DTB: modem=\$(fdtget \$D /soc@0/remoteproc@4080000 status) usb=\$(fdtget \$D $U dr_mode) gpu=\$(fdtget \$D /soc@0/gpu@3d00000 status) fb_pd=\$(fdtget \$D $FB power-domains 2>/dev/null) default=\$(fdtget \$D $U role-switch-default-mode 2>/dev/null) mdss=\$(fdtget \$D $MD status) wifi=\$(fdtget \$D $WF compatible 2>/dev/null || echo none)\"" 2>&1 | grep -vE "^\[.*\] %|NOTE:|DONE!|WARNING"
 # 2) initramfs + Image + FIT template (prep-lts.sh), then point the FIT to the production DTB

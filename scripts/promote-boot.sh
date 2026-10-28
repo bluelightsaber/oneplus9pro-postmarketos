@@ -1,6 +1,6 @@
 #!/bin/bash
 # Escribe una imagen probada en boot_a desde Linux (dd por SSH), con copia previa y verificación.
-# Uso: promote-boot.sh IMAGEN
+# Uso: [KV=kver] promote-boot.sh IMAGEN (also sets PRODUCTION_KERNEL for experiment-fallback)
 set -euo pipefail
 IMG=$1
 P=/srv/oneplus9pro-pmos
@@ -29,4 +29,8 @@ H2=$(sudo_p "head -c $ISZ $DEV | sha256sum" | cut -d" " -f1)
 echo "imagen  $H1"; echo "boot_a  $H2"
 [ "$H1" = "$H2" ] && echo "VERIFICADO" || { echo "NO COINCIDE: restaurar con $B"; exit 1; }
 $SSHP "rm -f /tmp/newboot.img"
+# record the new production kernel, otherwise experiment-fallback reboots production every 15 min
+KV=${KV:-$(basename "$IMG" | sed -nE 's/^boot-uboot-pmos-([0-9]+\.[0-9]+\.[0-9]+(-rc[0-9]+)?)(-[a-z].*)?\.img$/\1/p')}
+[ -n "$KV" ] || { echo "!! could not derive the kernel version from $IMG: set PRODUCTION_KERNEL in /etc/experiment-fallback.conf by hand (or rerun with KV=...)"; exit 1; }
+sudo_p "sed -i s/^PRODUCTION_KERNEL=.*/PRODUCTION_KERNEL=$KV/ /etc/experiment-fallback.conf && grep PRODUCTION_KERNEL /etc/experiment-fallback.conf"
 echo PROMOTE-DONE

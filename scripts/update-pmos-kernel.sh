@@ -1,4 +1,6 @@
 #!/bin/bash
+# low CPU/IO priority so builds do not disturb other buildhost services (children and sudo/chroot inherit it)
+renice -n 19 -p $$ >/dev/null 2>&1; ionice -c3 -p $$ 2>/dev/null || true
 # Update cycle for the production kernel: postmarketOS linux-postmarketos-mainline built locally with
 # extra patches: 0100 qcom_battmgr charge_behaviour for SM8350, 0101 dispcc-sm8250 no-init-park (dispcc can
 # probe with the bootloader display running), 0102 ath11k WCN6855 hw1.1 (QCA6490 v1 Wi-Fi), 0103 arm-smmu-qcom

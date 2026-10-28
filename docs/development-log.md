@@ -135,3 +135,20 @@ Chronological notes from the bring-up (moved out of the README). Newest entries 
   (inhibit above 65 %), USB role `device`, reboot to fastboot from Linux, 3-reboot soak with `boot_a`
   `successful=1`. Rollback: fastboot → RAM-boot the 6.7 backup → `scripts/promote-boot.sh` it back.
   Updates: `scripts/update-pmos-kernel.sh [--promote]`.
+
+
+## 2026-10-27/28 — 7.3 final, zstd initramfs, USB host investigation
+
+- **7.3 final in production** (upstream bumped from 7.3-rc6). The update cycle needed one fix:
+  postmarketOS now builds a **zstd-compressed initramfs** (was gzip), and `prep-lts.sh` used `zcat`
+  on it. It now uses `zstdcat || zcat`. The kernel has `CONFIG_RD_ZSTD=y` and the U-Boot FIT passes
+  the ramdisk through unchanged, so nothing else had to change.
+- **Builds run at the lowest priority** (`nice 19` + `ionice` idle): the build host also runs other
+  services. The main build scripts renice themselves.
+- **Reboot loop after a manual promote:** `experiment-fallback` (reboots to production if an
+  experimental kernel is left running) compares `uname -r` with `PRODUCTION_KERNEL` in
+  `/etc/experiment-fallback.conf`. A promote with `promote-boot.sh` did not update it, so the new
+  production kernel was rebooted every 15 min (cleanly, always back to the same kernel).
+  `promote-boot.sh` now writes `PRODUCTION_KERNEL` itself.
+- **USB host mode does not work yet**, contrary to what an earlier version of the README said (it
+  had only been switched, never tested with a device). Details in `docs/usb-host.md`.

@@ -1,6 +1,7 @@
 #!/bin/bash
 # Prepara la prueba del kernel genérico linux-postmarketos-lts (binario oficial de pmOS) en el chroot
 # buildroot_aarch64: initramfs propio generado por mkinitfs (con UFS, btrfs y gadget NCM) y boot.img con
+# (initramfs may be gzip or zstd; pmOS switched to zstd with 7.3)
 # U-Boot + FIT (Image extraída del vmlinuz EFI zboot + initramfs + DTB del 9 Pro de producción).
 # No toca el móvil. Lecciones: mkinitfs 2.11 solo escribe vía boot-deploy (necesita el DTB en /boot/dtbs
 # y android-tools), los módulos extra van por NOMBRE en /etc/mkinitfs/modules/*.modules, y hacen falta
@@ -21,9 +22,9 @@ printf "%s\n" "# OnePlus 9 Pro: almacenamiento UFS y su PHY, necesarios para mon
 [ -e $B/usr/lib/os-release ] || sudo cp $(ls $P/pmbootstrap-work/chroot_rootfs_*/usr/lib/os-release | head -1) $B/usr/lib/os-release
 echo "== mkinitfs ($(date +%T))"
 pmbootstrap chroot -b aarch64 -- sh -c "mkinitfs 2>&1 | grep -iE 'error|fail|completed' | tail -3" 2>&1 | grep -vE "^\[.*\] %|NOTE:|DONE!"
-IKV=$(sudo sh -c "zcat $B/boot/initramfs | cpio -t 2>/dev/null" | grep -oE "lib/modules/[^/]+" | sort -u | sed "s|lib/modules/||")
+IKV=$(sudo sh -c "(zstdcat $B/boot/initramfs 2>/dev/null || zcat $B/boot/initramfs) | cpio -t 2>/dev/null" | grep -oE "lib/modules/[^/]+" | sort -u | sed "s|lib/modules/||")
 [ "$IKV" = "$KV" ] || { echo "!! initramfs has modules for $IKV, kernel is $KV (mkinitfs/boot-deploy failed?)"; exit 1; }
-sudo sh -c "zcat $B/boot/initramfs | cpio -t 2>/dev/null" | grep -cE "ufs-qcom|phy-qcom-qmp-ufs|btrfs.ko|usb_f_ncm" | sed "s/^/módulos clave en el initramfs: /;s/$/ de 4/"
+sudo sh -c "(zstdcat $B/boot/initramfs 2>/dev/null || zcat $B/boot/initramfs) | cpio -t 2>/dev/null" | grep -cE "ufs-qcom|phy-qcom-qmp-ufs|btrfs.ko|usb_f_ncm" | sed "s/^/módulos clave en el initramfs: /;s/$/ de 4/"
 sudo python3 - "$B/boot/vmlinuz" "$V/Image-lts" <<'EOF'
 import struct, sys, gzip
 d = open(sys.argv[1], "rb").read()

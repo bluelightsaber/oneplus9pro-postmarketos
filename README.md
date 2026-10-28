@@ -1,7 +1,7 @@
 # OnePlus 9 Pro (lemonadep) as a Linux server with postmarketOS and a mainline kernel
 
 > **Status:** work in progress (last update: 2026-10-10). The phone runs as a headless home server with
-> postmarketOS edge and our own build of the postmarketOS `linux-postmarketos-mainline` kernel (7.3-rc6)
+> postmarketOS edge and our own build of the postmarketOS `linux-postmarketos-mainline` kernel (7.3)
 > with a handful of patches: real display panel driver, Wi-Fi, Bluetooth, GPU, Docker and Tailscale work.
 >
 > **AI disclosure:** this work (patches, scripts and this guide) was done with the help of an AI assistant
@@ -24,12 +24,12 @@
 | Charge limit (45–65 % hysteresis) | ✅ | `qcom_battmgr` patch + service |
 | Reboot to fastboot from Linux | ✅ | `nvmem-reboot-mode` (module) |
 | A/B slots stable across many reboots | ✅ | `qbootctl -m` on every boot (**mandatory**) |
-| USB host mode (OTG) | ✅ manual | via dwc3 debugfs; no automatic detection (firmware has no UCSI) |
+| USB host mode (OTG) | ❌ under investigation | role switching works (UCSI), but devices do not enumerate: see `docs/usb-host.md` |
 | Modem off | ✅ | stopped at boot |
 | Display | ✅ | real panel driver (Samsung AMB670YF01, DSC 10 bpc) in production: kernel console (TER16x32, rotated to landscape), brightness, blank/unblank; `btop` on the console, blanked after 1 h idle, woken by any key (`config/screen-idle/`) |
 | Wi-Fi (QCA6490 = WCN6851 = WCN6855 hw1.1) | ✅ production | ath11k hw1.1 patch (as Baryshkov's sm8350-hdk series), vendor fw from the phone's own `modem_a` + `persist` (`scripts/qca6490-fw-install.sh`), real MAC from persist; connected to the home LAN |
 | Bluetooth (same chip, UART18) | ✅ production | `qcom,wcn6855-bt`, 4-pin uart18 + serial1 alias; BTFM.HSP.1.0.0-00978; bluez |
-| Modern mainline kernel (7.x) | ✅ | production: our build of pmOS `linux-postmarketos-mainline` 7.3-rc6 (r104, patches `patches/pmos-package/0100`–`0104`), updated with `scripts/update-pmos-kernel.sh` |
+| Modern mainline kernel (7.x) | ✅ | production: our build of pmOS `linux-postmarketos-mainline` 7.3 (r101, patches `patches/pmos-package/0100`–`0104`), updated with `scripts/update-pmos-kernel.sh` |
 | GPU (Adreno 660) | ✅ | in production since 2026-10-08: Vulkan 1.3 (`Turnip Adreno (TM) 660`) + GL (`FD660`); DTB `gpu@3d00000` okay + zap shader `qcom/sm8350/OnePlus/lemonade/a660_zap.mbn`, bootarg `msm.separate_gpu_kms=1` (display left off) |
 | Docker / Tailscale / NTP | ✅ | Docker 29 (data-root /opt/docker on the 102 GB data disk), Tailscale, systemd-timesyncd |
 | Storage | ✅ | rootfs 9.9 GB in `super`; `userdata` 102 GB = btrfs data disk (`/data`, `/opt/docker`, `/var/lib/containerd`) |
@@ -46,7 +46,7 @@
 | LineageOS images (dtbo/vendor_boot/vbmeta/boot only) | LineageOS **23.2 nightly 2026-10-05** for `lemonadep` |
 | postmarketOS / Nura | **edge**, systemd, `console` UI (October 2026) |
 | pmbootstrap | 3.11.1 |
-| Kernel | production: pmOS `linux-postmarketos-mainline` **7.3-rc6** rebuilt with our patches (pkgrel 104); first port used `linux-postmarketos-qcom-sm8350` 6.7 (archived fork `sm8350-mainline/linux` @ `ffb1b0db`) |
+| Kernel | production: pmOS `linux-postmarketos-mainline` **7.3** rebuilt with our patches; first port used `linux-postmarketos-qcom-sm8350` 6.7 (archived fork `sm8350-mainline/linux` @ `ffb1b0db`) |
 | U-Boot | **v2026.10** (mainline) plus one patch |
 | Host | Ubuntu Server 26.04 (laptop), adb/fastboot from platform-tools 37 |
 
