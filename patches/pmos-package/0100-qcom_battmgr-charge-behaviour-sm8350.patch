@@ -1,8 +1,19 @@
 diff --git a/drivers/power/supply/qcom_battmgr.c b/drivers/power/supply/qcom_battmgr.c
-index 7716eb9e1..b819ffae6 100644
+index 7716eb9e1..ec0a1db59 100644
 --- a/drivers/power/supply/qcom_battmgr.c
 +++ b/drivers/power/supply/qcom_battmgr.c
-@@ -509,6 +509,9 @@ static int qcom_battmgr_bat_sc8280xp_update(struct qcom_battmgr *battmgr,
+@@ -332,6 +332,10 @@ struct qcom_battmgr {
+ 	struct qcom_battmgr_usb usb;
+ 	struct qcom_battmgr_wireless wireless;
+ 
++	/* raw Oplus USB property access (oplus_usb_prop sysfs attribute) */
++	u32 oplus_prop;
++	u32 oplus_value;
++
+ 	struct work_struct enable_work;
+ 
+ 	/*
+@@ -509,6 +513,9 @@ static int qcom_battmgr_bat_sc8280xp_update(struct qcom_battmgr *battmgr,
  	return ret;
  }
  
@@ -12,7 +23,7 @@ index 7716eb9e1..b819ffae6 100644
  static int qcom_battmgr_bat_get_property(struct power_supply *psy,
  					 enum power_supply_property psp,
  					 union power_supply_propval *val)
-@@ -520,6 +523,11 @@ static int qcom_battmgr_bat_get_property(struct power_supply *psy,
+@@ -520,6 +527,11 @@ static int qcom_battmgr_bat_get_property(struct power_supply *psy,
  	if (!battmgr->service_up)
  		return -EAGAIN;
  
@@ -24,7 +35,7 @@ index 7716eb9e1..b819ffae6 100644
  	if (battmgr->variant == QCOM_BATTMGR_SC8280XP ||
  	    battmgr->variant == QCOM_BATTMGR_X1E80100)
  		ret = qcom_battmgr_bat_sc8280xp_update(battmgr, psp);
-@@ -761,6 +769,7 @@ static int qcom_battmgr_bat_is_writeable(struct power_supply *psy,
+@@ -761,6 +773,7 @@ static int qcom_battmgr_bat_is_writeable(struct power_supply *psy,
  					 enum power_supply_property psp)
  {
  	switch (psp) {
@@ -32,7 +43,7 @@ index 7716eb9e1..b819ffae6 100644
  	case POWER_SUPPLY_PROP_CHARGE_CONTROL_START_THRESHOLD:
  	case POWER_SUPPLY_PROP_CHARGE_CONTROL_END_THRESHOLD:
  		return 1;
-@@ -781,6 +790,21 @@ static int qcom_battmgr_bat_set_property(struct power_supply *psy,
+@@ -781,6 +794,21 @@ static int qcom_battmgr_bat_set_property(struct power_supply *psy,
  		return -EAGAIN;
  
  	switch (psp) {
@@ -54,7 +65,7 @@ index 7716eb9e1..b819ffae6 100644
  	case POWER_SUPPLY_PROP_CHARGE_CONTROL_START_THRESHOLD:
  		return qcom_battmgr_set_charge_start_threshold(battmgr, pval->intval);
  	case POWER_SUPPLY_PROP_CHARGE_CONTROL_END_THRESHOLD:
-@@ -885,6 +909,7 @@ static const enum power_supply_property sm8350_bat_props[] = {
+@@ -885,6 +913,7 @@ static const enum power_supply_property sm8350_bat_props[] = {
  	POWER_SUPPLY_PROP_INTERNAL_RESISTANCE,
  	POWER_SUPPLY_PROP_STATE_OF_HEALTH,
  	POWER_SUPPLY_PROP_POWER_NOW,
@@ -62,7 +73,7 @@ index 7716eb9e1..b819ffae6 100644
  };
  
  static const struct power_supply_desc sm8350_bat_psy_desc = {
-@@ -893,6 +918,10 @@ static const struct power_supply_desc sm8350_bat_psy_desc = {
+@@ -893,6 +922,10 @@ static const struct power_supply_desc sm8350_bat_psy_desc = {
  	.properties = sm8350_bat_props,
  	.num_properties = ARRAY_SIZE(sm8350_bat_props),
  	.get_property = qcom_battmgr_bat_get_property,
@@ -73,11 +84,91 @@ index 7716eb9e1..b819ffae6 100644
  };
  
  static const enum power_supply_property sm8550_bat_props[] = {
-@@ -1556,6 +1585,7 @@ static void qcom_battmgr_sm8350_callback(struct qcom_battmgr *battmgr,
+@@ -1517,7 +1550,7 @@ static void qcom_battmgr_sm8350_callback(struct qcom_battmgr *battmgr,
+ 			battmgr->usb.usb_type = le32_to_cpu(resp->intval.value);
+ 			break;
+ 		default:
+-			dev_warn(battmgr->dev, "unknown property %#x\n", property);
++			battmgr->oplus_value = le32_to_cpu(resp->intval.value);
+ 			break;
+ 		}
+ 		break;
+@@ -1556,6 +1589,8 @@ static void qcom_battmgr_sm8350_callback(struct qcom_battmgr *battmgr,
  			break;
  		}
  		break;
 +	case BATTMGR_BAT_PROPERTY_SET:
++	case BATTMGR_USB_PROPERTY_SET:
  	case BATTMGR_REQUEST_NOTIFICATION:
  	case BATTMGR_CHG_CTRL_LIMIT_EN:
  		battmgr->error = 0;
+@@ -1624,6 +1659,48 @@ static const struct of_device_id qcom_battmgr_of_variants[] = {
+ 
+ static char *qcom_battmgr_battery[] = { "battery" };
+ 
++static ssize_t oplus_usb_prop_show(struct device *dev, struct device_attribute *attr, char *buf)
++{
++	struct qcom_battmgr *battmgr = dev_get_drvdata(dev);
++
++	return sysfs_emit(buf, "%u %u\n", battmgr->oplus_prop, battmgr->oplus_value);
++}
++
++static ssize_t oplus_usb_prop_store(struct device *dev, struct device_attribute *attr,
++				    const char *buf, size_t count)
++{
++	struct qcom_battmgr *battmgr = dev_get_drvdata(dev);
++	u32 prop, val;
++	int n, ret = 0;
++
++	n = sscanf(buf, "%u %u", &prop, &val);
++	/* 0..6 are parsed into the regular USB state by the callback */
++	if (n < 1 || prop < 7 || prop > 63)
++		return -EINVAL;
++
++	mutex_lock(&battmgr->lock);
++	if (n == 2)
++		ret = qcom_battmgr_request_property(battmgr, BATTMGR_USB_PROPERTY_SET, prop, val);
++	if (!ret) {
++		battmgr->oplus_prop = prop;
++		battmgr->oplus_value = U32_MAX;
++		ret = qcom_battmgr_request_property(battmgr, BATTMGR_USB_PROPERTY_GET, prop, 0);
++	}
++	mutex_unlock(&battmgr->lock);
++
++	return ret ? ret : count;
++}
++static DEVICE_ATTR_RW(oplus_usb_prop);
++
++static struct attribute *qcom_battmgr_oplus_attrs[] = {
++	&dev_attr_oplus_usb_prop.attr,
++	NULL
++};
++
++static const struct attribute_group qcom_battmgr_oplus_group = {
++	.attrs = qcom_battmgr_oplus_attrs,
++};
++
+ static int qcom_battmgr_probe(struct auxiliary_device *adev,
+ 			      const struct auxiliary_device_id *id)
+ {
+@@ -1640,6 +1717,7 @@ static int qcom_battmgr_probe(struct auxiliary_device *adev,
+ 		return -ENOMEM;
+ 
+ 	battmgr->dev = dev;
++	dev_set_drvdata(dev, battmgr);
+ 
+ 	psy_cfg.drv_data = battmgr;
+ 	psy_cfg.fwnode = dev_fwnode(&adev->dev);
+@@ -1723,6 +1801,12 @@ static int qcom_battmgr_probe(struct auxiliary_device *adev,
+ 	if (IS_ERR(battmgr->client))
+ 		return PTR_ERR(battmgr->client);
+ 
++	if (battmgr->variant == QCOM_BATTMGR_SM8350) {
++		ret = devm_device_add_group(dev, &qcom_battmgr_oplus_group);
++		if (ret)
++			return ret;
++	}
++
+ 	pmic_glink_client_register(battmgr->client);
+ 
+ 	return 0;

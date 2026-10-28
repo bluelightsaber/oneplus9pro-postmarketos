@@ -152,3 +152,7 @@ Chronological notes from the bring-up (moved out of the README). Newest entries 
   `promote-boot.sh` now writes `PRODUCTION_KERNEL` itself.
 - **USB host mode does not work yet**, contrary to what an earlier version of the README said (it
   had only been switched, never tested with a device). Details in `docs/usb-host.md`.
+- **Oplus charger firmware properties** (2026-10-28): patch 0100 adds `oplus_usb_prop` (raw access to
+  the Oplus-specific USB properties of the ADSP firmware). Reading them showed the port is already
+  dual-role; the missing pieces for OTG are the boot-time `USB_OTG_AP_ENABLE`/`USB_OTG_SWITCH`
+  writes and the external VBUS boost. See `docs/usb-host.md`.

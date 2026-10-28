@@ -1,0 +1,15 @@
+[Unit]
+Description=Tell the Oplus ADSP charger firmware that OTG is allowed (like Android's OTG toggle)
+# needs the oplus_usb_prop attribute from our qcom_battmgr patch (0100)
+After=systemd-modules-load.service
+ConditionPathExists=/sys/bus/auxiliary/devices/pmic_glink.power-supply.0
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+# 14 USB_OTG_AP_ENABLE, 15 USB_OTG_SWITCH (Oplus firmware property ids); retried until the ADSP is up
+ExecStart=/bin/sh -c 'A=/sys/bus/auxiliary/devices/pmic_glink.power-supply.0/oplus_usb_prop; for i in $(seq 1 30); do echo "14 1" > $A 2>/dev/null && echo "15 1" > $A && exit 0; sleep 2; done; exit 1'
+ExecStop=/bin/sh -c 'A=/sys/bus/auxiliary/devices/pmic_glink.power-supply.0/oplus_usb_prop; echo "15 0" > $A; echo "14 0" > $A'
+
+[Install]
+WantedBy=multi-user.target

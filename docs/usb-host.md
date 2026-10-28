@@ -37,15 +37,42 @@ original sm8350-mainline port, so only the USB2 path is in use).
 | HS PHY tuning via `qcom,*-bp` DT properties (squelch, HS amplitude, pre-emphasis, disconnect threshold, rise/fall, crossover, output impedance) roughly mirroring the vendor host override sequence | identical |
 | DT differences with the original sm8350-mainline lemonadep port (which listed "USB incl. OTG") | none in the USB nodes |
 
-## Leads
+## The Oplus charger firmware
 
-- The vendor kernel programs a different HS PHY override sequence in host mode
+The ADSP charger firmware on this phone is Oplus-specific. Its USB property list (vendor
+`drivers/power/oplus/charger_ic/oplus_battery_sm8350.h`, `enum usb_property_id`) matches mainline
+only for ids 0–9; from 10 on it has its own entries:
+
+| id | name | value read on mainline (phone charging from a PC) |
+|---|---|---|
+| 14 | `USB_OTG_AP_ENABLE` | 0 (the vendor kernel writes 1 at boot) |
+| 15 | `USB_OTG_SWITCH` | 0 (Android's "OTG" toggle) |
+| 16 | `USB_TYPEC_CC_ORIENTATION` | 0 |
+| 18 | `USB_TYPEC_MODE` | 0 = DRP (1 SNK, 2 SRC, 3 disabled) |
+| 19 | `USB_TYPEC_SINKONLY` | 0 |
+| 20 | `USB_OTG_VBUS_REGULATOR_ENABLE` | 0 |
+
+Patch 0100 now adds a sysfs attribute to read and write them:
+`/sys/bus/auxiliary/devices/pmic_glink.power-supply.0/oplus_usb_prop`
+(`echo N >` reads property N, `echo "N V" >` writes V and reads it back, `cat` shows `N value`).
+
+The port is already dual-role, so the firmware does not keep it sink-only. What mainline does not do,
+compared with the vendor kernel:
+
+1. write `USB_OTG_AP_ENABLE = 1` at boot and `USB_OTG_SWITCH = 1` when OTG is wanted
+   (`config/usb/oplus-otg.service` does both; not yet tested with a device);
+2. on the firmware's `BC_OTG_ENABLE` notification (0x49), switch on the **external VBUS boost**
+   this wireless-charging phone uses for OTG: PM8350C GPIO 6 (`wrx_en`), TLMM GPIO 8
+   (`ext1-otg-en`), and on some paths PM8350C GPIO 1 (`mps_otg_en`). This would explain why an
+   unpowered hub never attaches. **Do not drive these while a VBUS source is connected.**
+
+## Other leads
+
+- The vendor HS PHY driver programs a different override sequence in host mode
   (`qcom,param-override-seq-host = <0xe7 0x6c 0x0c 0x70 0x17 0x74>` vs device
-  `<0xe6 0x6c 0x0f 0x70 0x17 0x74>`); the mainline `phy-qcom-snps-femto-v2` driver has no host-specific
-  sequence. The `-bp` properties may not map exactly to those raw values.
-- On the vendor side, OTG VBUS is driven by the Oplus charger driver, not by the ADSP:
-  `oplus,ext1-otg-en` (TLMM GPIO 8), `mps_otg_en` (PM8350C GPIO 1) and `op,vbus-ctrl-gpio`
-  (PM8350C GPIO 7, active low). Mainline has none of these, which would explain the unpowered-hub
-  result.
-- The PMIC charger also uses D+/D− for charger detection; how it behaves while the phone is a
-  sink *and* a host is unknown.
+  `<0xe6 0x6c 0x0f 0x70 0x17 0x74>`). It only changes the HS disconnect threshold and TX amplitude,
+  so it cannot explain why full-speed transfers fail too.
+- The vendor PHY driver requests regulator loads (0.88 V 30 mA, 1.8 V 19 mA, 3.3 V 16 mA);
+  mainline requests none, and the 0.88 V rail (L5B, `regulator-allow-set-load`) runs in LPM.
+- Ruled out as well: the D+/D− switch towards the Warp fast-charge ASIC (TLMM GPIO 47 is in the
+  normal/USB position, and device mode runs at 480 Mbit/s), and EUD (not enabled).

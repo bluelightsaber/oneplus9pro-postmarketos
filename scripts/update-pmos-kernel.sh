@@ -2,7 +2,7 @@
 # low CPU/IO priority so builds do not disturb other buildhost services (children and sudo/chroot inherit it)
 renice -n 19 -p $$ >/dev/null 2>&1; ionice -c3 -p $$ 2>/dev/null || true
 # Update cycle for the production kernel: postmarketOS linux-postmarketos-mainline built locally with
-# extra patches: 0100 qcom_battmgr charge_behaviour for SM8350, 0101 dispcc-sm8250 no-init-park (dispcc can
+# extra patches: 0100 qcom_battmgr charge_behaviour for SM8350 + oplus_usb_prop (raw Oplus USB properties), 0101 dispcc-sm8250 no-init-park (dispcc can
 # probe with the bootloader display running), 0102 ath11k WCN6855 hw1.1 (QCA6490 v1 Wi-Fi), 0103 arm-smmu-qcom
 # sm8350-mdss identity domain (needed once MDSS/panel is enabled) and FB_SIMPLE + fbcon font (console on screen). The pmOS kernel
 # enforces signed modules, so everything must be in the package build.
@@ -37,6 +37,7 @@ WT=$P/src/linux-pmos-$TAG
 [ -d $WT ] || sudo git worktree add -q --detach $WT $TAG || die "worktree $TAG"
 cd $WT && sudo git checkout -q -- . && sudo git clean -fdq -- drivers arch   # a failed earlier run must not leak into the patches
 sudo python3 $P/scripts/apply-battmgr-behaviour-73.py drivers/power/supply/qcom_battmgr.c || die "battmgr patch does not apply to $TAG: update apply-battmgr-behaviour-73.py"
+sudo python3 $P/scripts/apply-battmgr-oplus-usbprop.py drivers/power/supply/qcom_battmgr.c || die "battmgr oplus_usb_prop does not apply to $TAG: update apply-battmgr-oplus-usbprop.py"
 sudo git diff --no-color -- drivers/power/supply/qcom_battmgr.c > /tmp/battmgr.patch; sudo git checkout -q -- drivers/power/supply/qcom_battmgr.c
 sudo git checkout -q -- drivers/clk/qcom/dispcc-sm8250.c
 sudo python3 $P/scripts/apply-dispcc-noinitpark-73.py drivers/clk/qcom/dispcc-sm8250.c || die "dispcc patch does not apply to $TAG: update apply-dispcc-noinitpark-73.py"
