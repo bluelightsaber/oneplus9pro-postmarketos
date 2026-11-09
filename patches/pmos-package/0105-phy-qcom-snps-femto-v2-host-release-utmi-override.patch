@@ -1,0 +1,48 @@
+diff --git a/drivers/phy/qualcomm/phy-qcom-snps-femto-v2.c b/drivers/phy/qualcomm/phy-qcom-snps-femto-v2.c
+index 980ad1fb1..ec13153e1 100644
+--- a/drivers/phy/qualcomm/phy-qcom-snps-femto-v2.c
++++ b/drivers/phy/qualcomm/phy-qcom-snps-femto-v2.c
+@@ -226,12 +226,35 @@ static int __maybe_unused qcom_snps_hsphy_runtime_resume(struct device *dev)
+ 	return qcom_snps_hsphy_resume(hsphy);
+ }
+ 
++static void qcom_snps_hsphy_release_utmi(struct qcom_snps_hsphy *hsphy)
++{
++	if (!hsphy->phy_initialized)
++		return;
++
++	if (readl_relaxed(hsphy->base + USB2_PHY_USB_PHY_CFG0) & UTMI_PHY_DATAPATH_CTRL_OVERRIDE_EN) {
++		dev_info(&hsphy->phy->dev, "host mode: releasing UTMI datapath override (non-driving)\n");
++		qcom_snps_hsphy_write_mask(hsphy->base, USB2_PHY_USB_PHY_CFG0,
++					   UTMI_PHY_DATAPATH_CTRL_OVERRIDE_EN, 0);
++	}
++}
++
+ static int qcom_snps_hsphy_set_mode(struct phy *phy, enum phy_mode mode,
+ 				    int submode)
+ {
+ 	struct qcom_snps_hsphy *hsphy = phy_get_drvdata(phy);
+ 
+ 	hsphy->mode = mode;
++	if (mode == PHY_MODE_USB_HOST)
++		qcom_snps_hsphy_release_utmi(hsphy);
++	return 0;
++}
++
++static int qcom_snps_hsphy_connect(struct phy *phy, int port)
++{
++	struct qcom_snps_hsphy *hsphy = phy_get_drvdata(phy);
++
++	if (hsphy->mode == PHY_MODE_USB_HOST)
++		qcom_snps_hsphy_release_utmi(hsphy);
+ 	return 0;
+ }
+ 
+@@ -492,6 +515,7 @@ static const struct phy_ops qcom_snps_hsphy_gen_ops = {
+ 	.init		= qcom_snps_hsphy_init,
+ 	.exit		= qcom_snps_hsphy_exit,
+ 	.set_mode	= qcom_snps_hsphy_set_mode,
++	.connect	= qcom_snps_hsphy_connect,
+ 	.owner		= THIS_MODULE,
+ };
+ 

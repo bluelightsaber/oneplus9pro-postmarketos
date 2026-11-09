@@ -24,7 +24,7 @@
 | Charge limit (45–65 % hysteresis) | ✅ | `qcom_battmgr` patch + service |
 | Reboot to fastboot from Linux | ✅ | `nvmem-reboot-mode` (module) |
 | A/B slots stable across many reboots | ✅ | `qbootctl -m` on every boot (**mandatory**) |
-| USB host mode (OTG) | ❌ under investigation | role switching works (UCSI), but devices do not enumerate: see `docs/usb-host.md` |
+| USB host mode (OTG) | 🟡 USB 2 only | powered USB-C hub enumerates at 480 Mbit/s (patch 0105); USB 3 devices and unpowered hubs not yet: see `docs/usb-host.md` |
 | Modem off | ✅ | stopped at boot |
 | Display | ✅ | real panel driver (Samsung AMB670YF01, DSC 10 bpc) in production: kernel console (TER16x32, rotated to landscape), brightness, blank/unblank; `btop` on the console, blanked after 1 h idle, woken by any key (`config/screen-idle/`) |
 | Wi-Fi (QCA6490 = WCN6851 = WCN6855 hw1.1) | ✅ production | ath11k hw1.1 patch (as Baryshkov's sm8350-hdk series), vendor fw from the phone's own `modem_a` + `persist` (`scripts/qca6490-fw-install.sh`), real MAC from persist; connected to the home LAN |

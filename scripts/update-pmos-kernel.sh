@@ -4,7 +4,7 @@ renice -n 19 -p $$ >/dev/null 2>&1; ionice -c3 -p $$ 2>/dev/null || true
 # Update cycle for the production kernel: postmarketOS linux-postmarketos-mainline built locally with
 # extra patches: 0100 qcom_battmgr charge_behaviour for SM8350 + oplus_usb_prop (raw Oplus USB properties), 0101 dispcc-sm8250 no-init-park (dispcc can
 # probe with the bootloader display running), 0102 ath11k WCN6855 hw1.1 (QCA6490 v1 Wi-Fi), 0103 arm-smmu-qcom
-# sm8350-mdss identity domain (needed once MDSS/panel is enabled) and FB_SIMPLE + fbcon font (console on screen). The pmOS kernel
+# sm8350-mdss identity domain (needed once MDSS/panel is enabled), 0105 femto-v2 host-mode UTMI override release (USB host) and FB_SIMPLE + fbcon font (console on screen). The pmOS kernel
 # enforces signed modules, so everything must be in the package build.
 #  1. take the upstream APKBUILD from pmaports (origin/main) and compare with what we last built
 #  2. regenerate our patch against the new upstream tag (anchored script: fails loudly if the driver changed)
@@ -48,6 +48,10 @@ sudo git diff --no-color -- $A11 > /tmp/ath11k.patch; sudo git checkout -q -- $A
 SM=drivers/iommu/arm/arm-smmu/arm-smmu-qcom.c; sudo git checkout -q -- $SM
 sudo python3 $P/scripts/apply-smmu-sm8350-mdss.py $SM || die "smmu patch does not apply to $TAG"
 sudo git diff --no-color -- $SM > /tmp/smmu.patch; sudo git checkout -q -- $SM
+# 0105: femto-v2 HS PHY: in host mode release the UTMI datapath override the charger firmware leaves set (USB host fix)
+FP=drivers/phy/qualcomm/phy-qcom-snps-femto-v2.c; sudo git checkout -q -- $FP
+sudo python3 $P/scripts/apply-femto-host-override.py $FP || die "femto host patch does not apply to $TAG"
+sudo git diff --no-color -- $FP > /tmp/femto.patch; sudo git checkout -q -- $FP
 # 0104: Samsung AMB670YF01 panel driver (driver + Kconfig + Makefile only; the DT lives in our tree DTB)
 PD=drivers/gpu/drm/panel; sudo git checkout -q -- $PD; sudo rm -f $PD/panel-samsung-amb670yf01.c
 sudo python3 $P/scripts/add-panel-amb670.py $WT $P/repo/patches/lmdpdg-panel-samsung-amb670yf01-dsc.c >/dev/null && sudo python3 $P/scripts/panel-enable.py $WT/$PD/panel-samsung-amb670yf01.c >/dev/null && sudo python3 $P/scripts/panel-readback.py $WT/$PD/panel-samsung-amb670yf01.c >/dev/null || die "panel driver does not apply to $TAG"
@@ -60,14 +64,16 @@ cp /tmp/dispcc.patch $D/0101-dispcc-sm8250-no-init-park.patch
 cp /tmp/ath11k.patch $D/0102-ath11k-wcn6855-hw1.1.patch
 cp /tmp/smmu.patch $D/0103-arm-smmu-qcom-sm8350-mdss-identity.patch
 cp /tmp/panel.patch $D/0104-drm-panel-samsung-amb670yf01.patch
+cp /tmp/femto.patch $D/0105-phy-qcom-snps-femto-v2-host-release-utmi-override.patch
 UPREL=$(sed -n "s/^pkgrel=//p" $D/APKBUILD)
 sed -i "s/^pkgrel=.*/pkgrel=$((100 + 10 * UPREL + REV))/" $D/APKBUILD
 sed -i "0,/^source=\"/s|^source=\"|source=\"\n\t0100-qcom_battmgr-charge-behaviour-sm8350.patch|" $D/APKBUILD
 grep -q "0100-qcom_battmgr" $D/APKBUILD || die "could not add the patch to the APKBUILD"
 sed -i "0,/0100-qcom_battmgr-charge-behaviour-sm8350.patch/s|0100-qcom_battmgr-charge-behaviour-sm8350.patch|0100-qcom_battmgr-charge-behaviour-sm8350.patch\n\t0101-dispcc-sm8250-no-init-park.patch|" $D/APKBUILD
 grep -q "0101-dispcc" $D/APKBUILD || die "could not add the dispcc patch to the APKBUILD"
-sed -i "0,/0101-dispcc-sm8250-no-init-park.patch/s|0101-dispcc-sm8250-no-init-park.patch|0101-dispcc-sm8250-no-init-park.patch\n\t0102-ath11k-wcn6855-hw1.1.patch\n\t0103-arm-smmu-qcom-sm8350-mdss-identity.patch\n\t0104-drm-panel-samsung-amb670yf01.patch|" $D/APKBUILD
+sed -i "0,/0101-dispcc-sm8250-no-init-park.patch/s|0101-dispcc-sm8250-no-init-park.patch|0101-dispcc-sm8250-no-init-park.patch\n\t0102-ath11k-wcn6855-hw1.1.patch\n\t0103-arm-smmu-qcom-sm8350-mdss-identity.patch\n\t0104-drm-panel-samsung-amb670yf01.patch\n\t0105-phy-qcom-snps-femto-v2-host-release-utmi-override.patch|" $D/APKBUILD
 grep -q "0102-ath11k" $D/APKBUILD && grep -q "0103-arm-smmu" $D/APKBUILD || die "could not add 0102/0103 to the APKBUILD"
+grep -q "0105-phy-qcom" $D/APKBUILD || die "could not add 0105 to the APKBUILD"
 # console on screen: simplefb (bootloader framebuffer, see build-pmos-image.sh) + a large font
 CF=$D/config-mainline.aarch64
 sed -i "s/^# CONFIG_FB_SIMPLE is not set/CONFIG_FB_SIMPLE=y/; s/^# CONFIG_FONTS is not set/CONFIG_FONTS=y\nCONFIG_FONT_8x16=y\nCONFIG_FONT_TER16x32=y/" $CF

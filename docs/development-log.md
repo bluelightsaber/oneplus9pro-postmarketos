@@ -156,3 +156,17 @@ Chronological notes from the bring-up (moved out of the README). Newest entries 
   the Oplus-specific USB properties of the ADSP firmware). Reading them showed the port is already
   dual-role; the missing pieces for OTG are the boot-time `USB_OTG_AP_ENABLE`/`USB_OTG_SWITCH`
   writes and the external VBUS boost. See `docs/usb-host.md`.
+
+## 2026-11-09 — USB host: root cause found and fixed (USB 2)
+
+- With a powered hub in host mode, the HS PHY was left in the charger-detection state: UTMI datapath
+  override on, PHY non-driving. The charger firmware sets it and mainline never clears it, hence the
+  `-71` enumeration errors. Found with a lockdown-free test kernel and `/dev/mem` register dumps.
+- **Patch 0105** clears the override on root-port connect and on the switch to host mode. The hub now
+  enumerates at high speed automatically. In production since 2026-11-09.
+- Still open: USB 3 (the hub's RJ45 and USB-A ports are on its USB 3 side; the QMP combo PHY is not
+  enabled yet) and unpowered hubs (the firmware forces sink-only after a detach). See `docs/usb-host.md`.
+- Lesson: never leave a new package's modules installed while the old kernel is booted. With integrity
+  lockdown, module signatures are checked against the kernel build's own key, so the old kernel rejects
+  them. It then boots without Wi-Fi and without reboot-mode, so it cannot be sent to fastboot from Linux.
+
