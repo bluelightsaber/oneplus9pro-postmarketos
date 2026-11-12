@@ -1,8 +1,9 @@
 # USB host mode (OTG): status and investigation
 
-**Status (2026-11-09): USB 2.0 host works with a powered USB-C hub** (patch 0105). USB 3 devices
+**Status (2026-11-12): USB 2.0 host works with a powered USB-C hub** (patch 0105). USB 3 devices
 behind the hub (its USB-A ports and integrated RJ45) are not visible yet, because only the USB 2 half
-of the port is enabled. An unpowered hub still does not attach.
+of the port is enabled. Enabling USB 3 hangs the phone at boot (see below). An unpowered hub still
+does not attach.
 
 The goal is a USB-C hub with Ethernet (and later a USB disk) while the hub also charges the phone.
 
@@ -50,11 +51,27 @@ build without it (`scripts/update-pmos-kernel-lockoff.sh`, `CONFIG_LOCK_DOWN_KER
 boot only, never promoted) plus a tiny freestanding reader/writer (`scripts/rdmem.c`; dump script
 `scripts/phydump.sh`) gave register access.
 
-## Next: USB 3
+## USB 3 (in progress, hangs)
 
-The dwc3 node only has `usb2-phy` and `maximum-speed = "high-speed"`, and the QMP USB3/DP combo PHY is
-not probed. Hub devices that sit on the USB 3 side (here: all USB-A ports and the RJ45) therefore do not
-appear. Enabling USB 3 needs the combo PHY in the DT and orientation handling through pmic_glink.
+The dwc3 node only has `usb2-phy`, `maximum-speed = "high-speed"` and `qcom,select-utmi-as-pipe-clk`
+(inherited from the original sm8350-mainline port, whose DT says "USB3 seems broken (though it's enabled
+downstream?)"). Hub devices on the USB 3 side (here: all USB-A ports and the RJ45) therefore do not
+appear. `scripts/usb3-dt.sh` applies the USB 3 changes to the DTB in stages
+(`scripts/build-usb3.sh <stage>`, RAM boot with `scripts/try-usb3.sh <stage>`):
+
+| stage | change | result |
+|---|---|---|
+| — | QMP combo PHY with vdda-phy L6B / vdda-pll L5B | hard hang at boot: L1B, the PHY core supply, stays off |
+| a | QMP combo PHY `okay`, vdda-phy **L1B 0.88 V**, vdda-pll **L6B 1.2 V** (as on sm8350-hdk/mtp) | boots, PHY probes |
+| b | a + dwc3 `phys = <hsphy>, <qmpphy 0>` | boots, 480 Mbit/s as expected |
+| c1 | b + pipe clock from the QMP PHY (drop `select-utmi-as-pipe-clk`) + `super-speed` | **hard hang** |
+| c | c1 + pmic-glink connector SS port ↔ QMP orientation graph | **hard hang** |
+| c3 | c1 + the usb_1 `interconnects` our DT deletes | **hard hang** |
+
+With `initcall_debug` on the screen (`scripts/build-usb3dbg.sh`), the last messages before the hang
+come at ~14 s, when the ADSP firmware boots and pmic_glink starts reporting the Type-C port. That is
+roughly when the role switch to device (towards the build host) starts the dwc3 gadget on the QMP
+pipe clock. pstore does not survive the forced reset, so there is no oops log.
 
 ## Unpowered hub (still open)
 

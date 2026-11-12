@@ -62,6 +62,8 @@ else
   grep -q disp_cc_sm8250 $ENV || sudo sed -i -E "s|^pmos_bootargs=|pmos_bootargs=initcall_blacklist=disp_cc_sm8250_driver_init |" $ENV
 fi
 if [ "$GPU" = 1 ]; then grep -q separate_gpu_kms $ENV || sudo sed -i -E "s|^pmos_bootargs=|pmos_bootargs=msm.separate_gpu_kms=1 |" $ENV; fi
+# EXTRA_BOOTARGS: extra kernel arguments for test images (use NAME=...); the production env is restored below
+[ -n "${EXTRA_BOOTARGS:-}" ] && sudo sed -i -E "s|^pmos_bootargs=|pmos_bootargs=$EXTRA_BOOTARGS |" $ENV
 ~/uboot-build.sh >/tmp/pmosimg-ub.log 2>&1 || { tail -20 /tmp/pmosimg-ub.log; exit 1; }
 pmbootstrap chroot -- sh -c "cd /home/pmos/v2 && mkimage -f pmos-lts.its pmos-$IMGKV.itb >/dev/null && cat pmos-$IMGKV.itb pad112.bin > pmos-$IMGKV-padded.itb && rm -f boot-uboot-pmos-$IMGKV.img && mkbootimg --header_version 3 --kernel u-boot-int.bin.gz --ramdisk pmos-$IMGKV-padded.itb --cmdline \"\" --os_version 14.0.0 --os_patch_level 2025-04 -o boot-uboot-pmos-$IMGKV.img && ls -la boot-uboot-pmos-$IMGKV.img" 2>&1 | grep -vE "^\[.*\] %|NOTE:|DONE!|WARNING"
 sudo cp /tmp/env.prod $ENV; trap - EXIT

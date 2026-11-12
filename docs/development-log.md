@@ -170,3 +170,16 @@ Chronological notes from the bring-up (moved out of the README). Newest entries 
   lockdown, module signatures are checked against the kernel build's own key, so the old kernel rejects
   them. It then boots without Wi-Fi and without reboot-mode, so it cannot be sent to fastboot from Linux.
 
+## 2026-11-12 — USB 3 attempts
+
+- **Supplies:** the QMP USB3/DP combo PHY needs **L1B (0.88 V) as vdda-phy and L6B (1.2 V) as
+  vdda-pll**. With L1B off, the first try hung the SoC at boot: accessing an unpowered PHY stalls the
+  bus. With the right supplies the PHY probes fine.
+- **Pipe clock:** switching dwc3 from the UTMI pipe clock to the QMP pipe clock, with `super-speed`,
+  hangs the phone at boot. This happens with or without the orientation graph and with or without the
+  interconnects. The table is in `docs/usb-host.md`. USB 3 stays off in production (USB 2 host works).
+- The phone sat hung for about three days after the first try and drained its battery. Every
+  experiment now runs only as a RAM boot with someone around to long-press power.
+- `build-pmos-image.sh` takes `EXTRA_BOOTARGS` for test images (for example
+  `initcall_debug ignore_loglevel` to see the last initcalls on screen).
+
