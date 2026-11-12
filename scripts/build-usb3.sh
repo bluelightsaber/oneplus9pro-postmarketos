@@ -4,6 +4,6 @@
 ST=${1:?stage}
 P=/srv/oneplus9pro-pmos
 sudo cp ~/usb3-dt.sh $P/pmbootstrap-work/chroot_native/home/pmos/v2/usb3-dt.sh
-export NAME=usb3$ST SKIPMODS=1
+export USB3=0 NAME=usb3$ST SKIPMODS=1
 export EXTRA_UCMD="sh /home/pmos/v2/usb3-dt.sh \$D $ST"
 nice -n 19 ionice -c3 ~/build-pmos-image.sh

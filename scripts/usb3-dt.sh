@@ -7,6 +7,7 @@
 # c / full = + pipe clock from the PHY, super-speed and the orientation graph (hangs at boot, 2026-11-12)
 # c1 = b + pipe clock from the PHY + super-speed (no graph; hangs too); c2 = b + orientation graph only
 # c3 = c1 + the usb_1 interconnects our DT deletes (sm8350.dtsi values)
+# c8 = c7 + orientation graph; c7 = c1 with super-speed-plus (avoids the LLUCTL oops); c4 = c1 + QMP usb3phy_portselect pinctrl (gpio81 usb_phy); c6 = c1 + dr_mode=host
 set -e
 D=$1; ST=${2:-full}
 QP=/soc@0/phy@88e8000; G=/soc@0/usb@a6f8800; U=$G/usb@a600000; C=/pmic-glink/connector@0/ports
@@ -40,6 +41,12 @@ if [ $ST != c2 ]; then
   fdtput -d $D $G qcom,select-utmi-as-pipe-clk
   fdtput -t s $D $U maximum-speed super-speed
 fi
+# c7 = c1 with maximum-speed super-speed-plus (vendor value). With "super-speed" dwc3 (DWC_usb31) forces
+# Gen1 by reading LLUCTL at 0xd024, beyond the 0xcd00 reg window -> Oops in dwc3_core_init (the "hang")
+if [ $ST = c7 ]; then
+  fdtput -t s $D $U maximum-speed super-speed-plus
+  echo "USB3DT[$ST]: phys=$(fdtget $D $U phys) speed=$(fdtget $D $U maximum-speed) pipe-utmi=removed graph=none"; exit 0
+fi
 if [ $ST = c3 ]; then
   A1=$(fdtget $D /soc@0/interconnect@16e0000 phandle); MV=$(fdtget $D /soc@0/interconnect@1580000 phandle 2>/dev/null || fdtget $D /interconnect-0 phandle)
   GN=$(fdtget $D /soc@0/interconnect@9100000 phandle); CN=$(fdtget $D /soc@0/interconnect@1500000 phandle)
@@ -47,7 +54,22 @@ if [ $ST = c3 ]; then
   fdtput -t s $D $G interconnect-names usb-ddr apps-usb
   echo "USB3DT[$ST]: speed=$(fdtget $D $U maximum-speed) pipe-utmi=removed icc=$(fdtget $D $G interconnects)"; exit 0
 fi
+# c4 = c1 + vendor usb3phy_portselect pinctrl on the QMP PHY (gpio81 function usb_phy, bias-disable, 2 mA)
+if [ $ST = c4 ]; then
+  T=/soc@0/pinctrl@f100000/usb3phy-portselect-state; newph
+  fdtput -c $D $T; fdtput -t s $D $T pins gpio81; fdtput -t s $D $T function usb_phy
+  fdtput -t s $D $T bias-disable ""; fdtput $D $T drive-strength 2; fdtput $D $T phandle $NEXT
+  fdtput -t s $D $QP pinctrl-names default; fdtput $D $QP pinctrl-0 $NEXT
+  echo "USB3DT[$ST]: speed=$(fdtget $D $U maximum-speed) pipe-utmi=removed pinctrl=$(fdtget $D $T function)/$NEXT"; exit 0
+fi
+# c6 = c1 + dwc3 fixed in host mode (no role switch, no gadget)
+if [ $ST = c6 ]; then
+  fdtput -t s $D $U dr_mode host; fdtput -d $D $U usb-role-switch; fdtput -d $D $U role-switch-default-mode 2>/dev/null || true
+  echo "USB3DT[$ST]: speed=$(fdtget $D $U maximum-speed) pipe-utmi=removed dr_mode=$(fdtget $D $U dr_mode)"; exit 0
+fi
 if [ $ST = c1 ]; then echo "USB3DT[$ST]: phys=$(fdtget $D $U phys) speed=$(fdtget $D $U maximum-speed) pipe-utmi=removed graph=none"; exit 0; fi
+# c8 = c7 (super-speed-plus) + orientation graph
+[ $ST = c8 ] && fdtput -t s $D $U maximum-speed super-speed-plus
 # graph: connector port@1 (SS) <-> QMP port@0 (out)
 NEXT=$(dtc -I dtb -O dts $D 2>/dev/null | sed -n 's/.*phandle = <\(0x[0-9a-f]*\)>.*/\1/p' | while read h; do printf "%d\n" $h; done | sort -n | tail -1)
 P1=$((NEXT + 1)); P2=$((NEXT + 2))

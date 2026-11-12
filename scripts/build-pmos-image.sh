@@ -9,6 +9,7 @@ renice -n 19 -p $$ >/dev/null 2>&1; ionice -c3 -p $$ 2>/dev/null || true
 #  bootargs: initcall_blacklist=disp_cc_sm8250_driver_init + notreelog on the rootfs
 #       + msm.separate_gpu_kms=1 (GPU-only DRM device, display stays off)
 #  PANEL=1 (default): MDSS/DSI/AMB670 panel enabled (package kernel has the driver + SMMU fix); PANEL=0 disables it.
+#  USB3=1 (default): USB 3 SuperSpeed (usb3-dt.sh c8); USB3=0 = USB 2 only.
 #       WIFI=0: wcn6855-pmu and pcie0 wifi@0 nodes removed, uart18 bluetooth disabled.
 #  NAME=x: write lemonadep-prod-x.dtb / boot-uboot-pmos-<kver>-x.img (tests) instead of the production
 #       files. SKIPMODS=1: do not copy the modules to the phone.
@@ -40,6 +41,12 @@ BT=/soc@0/geniqup@8c0000/serial@890000/bluetooth
 if [ "$WIFI" != 1 ]; then UCMD="$UCMD && { fdtget \$D $BT compatible >/dev/null 2>&1 && fdtput -t s \$D $BT status disabled || true; }"; fi
 if [ "$WIFI" != 1 ]; then UCMD="$UCMD && { fdtget \$D $WF compatible >/dev/null 2>&1 && fdtput -r \$D $WF || true; } && { fdtget \$D $WP compatible >/dev/null 2>&1 && fdtput -r \$D $WP || true; }"; fi
 if [ "$GPU" = 1 ]; then UCMD="$UCMD && fdtput -t s \$D $G status okay && fdtput -t s \$D $G/zap-shader firmware-name qcom/sm8350/OnePlus/lemonade/a660_zap.mbn"; fi
+# USB3=1 (default): USB 3 SuperSpeed (usb3-dt.sh stage c8: QMP USB3/DP PHY on with L1B/L6B, dwc3 gets the
+# usb3-phy, no select-utmi-as-pipe-clk, maximum-speed super-speed-plus, connector<->QMP orientation graph).
+# "super-speed" must NOT be used: dwc3 then reads LLUCTL (0xd024) beyond the 0xcd00 reg window and oopses.
+# USB3=0 keeps USB 2 only (also use USB3=0 for test images that run usb3-dt.sh themselves via EXTRA_UCMD).
+USB3=${USB3:-1}
+if [ "$USB3" = 1 ]; then sudo cp ~/usb3-dt.sh $V/usb3-dt.sh; UCMD="$UCMD && sh /home/pmos/v2/usb3-dt.sh \$D c8"; fi
 # EXTRA_UCMD: additional fdtput/fdtget commands on $D (the DTB), for test images (use NAME=...)
 [ -n "${EXTRA_UCMD:-}" ] && UCMD="$UCMD && $EXTRA_UCMD"
 pmbootstrap chroot -- sh -c "cd /home/pmos/v2 && D=$DT && fdtput -t s \$D /soc@0/remoteproc@4080000 status disabled && $UCMD && \

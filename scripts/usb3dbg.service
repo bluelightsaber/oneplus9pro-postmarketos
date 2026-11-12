@@ -1,0 +1,13 @@
+[Unit]
+Description=USB 3 bring-up debug dump (only with usb3dbg on the kernel cmdline)
+ConditionKernelCommandLine=usb3dbg
+DefaultDependencies=no
+RequiresMountsFor=/data
+After=local-fs.target
+
+[Service]
+Type=simple
+ExecStart=/bin/sh /usr/local/bin/usb3dbg-dump.sh
+
+[Install]
+WantedBy=sysinit.target

@@ -183,3 +183,17 @@ Chronological notes from the bring-up (moved out of the README). Newest entries 
 - `build-pmos-image.sh` takes `EXTRA_BOOTARGS` for test images (for example
   `initcall_debug ignore_loglevel` to see the last initcalls on screen).
 
+## 2026-11-12 (night) — USB 3 works
+
+- The boot "hang" with the QMP pipe clock was a dwc3 **Oops**: `maximum-speed = "super-speed"` makes
+  dwc3 (DWC_usb31) force Gen1 through `LLUCTL` at `0xd024`, outside the `0xcd00` register window in
+  sm8350.dtsi. The Oops stalls deferred probing; with the display driver loaded the phone freezes.
+- Found with `usb3dbg.service`, which saves dmesg and blocked-task stacks to `/data` when `usb3dbg` is
+  on the command line. On the way, ADSP, the gadget/role switch and the gcc pipe-clock mux were ruled
+  out.
+- With `super-speed-plus` (the vendor value) and the connector↔PHY orientation graph (stage `c8`), the
+  powered hub's VL822 comes up at 10 Gbit/s and the RJ45 and a USB stick at 5 Gbit/s. This works on
+  the production kernel, in both plug orientations. The stick reads 66 MB/s; the phone sends 576 Mbit/s
+  over ssh on Ethernet.
+- The unpowered hub still does not attach: the port stays sink-only and sees no partner.
+- `build-pmos-image.sh` now applies `c8` by default (`USB3=1`); promotion after a soak.

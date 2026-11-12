@@ -1,9 +1,11 @@
 # USB host mode (OTG): status and investigation
 
-**Status (2026-11-12): USB 2.0 host works with a powered USB-C hub** (patch 0105). USB 3 devices
-behind the hub (its USB-A ports and integrated RJ45) are not visible yet, because only the USB 2 half
-of the port is enabled. Enabling USB 3 hangs the phone at boot (see below). An unpowered hub still
-does not attach.
+**Status (2026-11-12, late): USB 3 works through a powered USB-C hub** in RAM-boot tests on the
+production kernel, with DT changes only (`scripts/usb3-dt.sh` stage `c8`, now the default in
+`scripts/build-pmos-image.sh`, `USB3=1`). The hub's VIA VL822 comes up at 10 Gbit/s, the RTL8153 RJ45
+adapter at 5 Gbit/s (1000 Mbit/s Ethernet link) and a USB 3 stick at 5 Gbit/s, in both cable
+orientations. Not in production yet (soak pending). USB 2 host with a powered hub works since patch
+0105. An unpowered hub still does not attach.
 
 The goal is a USB-C hub with Ethernet (and later a USB disk) while the hub also charges the phone.
 
@@ -51,27 +53,50 @@ build without it (`scripts/update-pmos-kernel-lockoff.sh`, `CONFIG_LOCK_DOWN_KER
 boot only, never promoted) plus a tiny freestanding reader/writer (`scripts/rdmem.c`; dump script
 `scripts/phydump.sh`) gave register access.
 
-## USB 3 (in progress, hangs)
+## USB 3
 
-The dwc3 node only has `usb2-phy`, `maximum-speed = "high-speed"` and `qcom,select-utmi-as-pipe-clk`
-(inherited from the original sm8350-mainline port, whose DT says "USB3 seems broken (though it's enabled
-downstream?)"). Hub devices on the USB 3 side (here: all USB-A ports and the RJ45) therefore do not
-appear. `scripts/usb3-dt.sh` applies the USB 3 changes to the DTB in stages
-(`scripts/build-usb3.sh <stage>`, RAM boot with `scripts/try-usb3.sh <stage>`):
+The original port's dwc3 node only has `usb2-phy`, `maximum-speed = "high-speed"` and
+`qcom,select-utmi-as-pipe-clk` (its DT says "USB3 seems broken (though it's enabled downstream?)").
+`scripts/usb3-dt.sh` applies the USB 3 changes to the DTB in stages (`scripts/build-usb3.sh <stage>`,
+RAM boot with `scripts/try-usb3.sh <stage>`).
+
+**Working recipe (stage `c8`):**
+- QMP USB3/DP combo PHY (`phy@88e8000`) `okay`, `vdda-phy-supply` = **L1B** (0.88 V),
+  `vdda-pll-supply` = **L6B** (1.2 V), as on sm8350-hdk/mtp;
+- dwc3 `phys = <hsphy>, <qmpphy 0>`, `phy-names = "usb2-phy", "usb3-phy"`;
+- no `qcom,select-utmi-as-pipe-clk` (the controller runs on the QMP pipe clock);
+- **`maximum-speed = "super-speed-plus"`** (the vendor value);
+- pmic-glink connector `port@1` (SS) ↔ QMP `port@0` graph, so pmic_glink_altmode passes the cable
+  orientation to the PHY (`TYPEC_CTRL` follows the plug; both orientations tested).
 
 | stage | change | result |
 |---|---|---|
-| — | QMP combo PHY with vdda-phy L6B / vdda-pll L5B | hard hang at boot: L1B, the PHY core supply, stays off |
-| a | QMP combo PHY `okay`, vdda-phy **L1B 0.88 V**, vdda-pll **L6B 1.2 V** (as on sm8350-hdk/mtp) | boots, PHY probes |
-| b | a + dwc3 `phys = <hsphy>, <qmpphy 0>` | boots, 480 Mbit/s as expected |
-| c1 | b + pipe clock from the QMP PHY (drop `select-utmi-as-pipe-clk`) + `super-speed` | **hard hang** |
-| c | c1 + pmic-glink connector SS port ↔ QMP orientation graph | **hard hang** |
-| c3 | c1 + the usb_1 `interconnects` our DT deletes | **hard hang** |
+| — | QMP PHY with vdda-phy L6B / vdda-pll L5B | hard hang at boot: L1B, the PHY core supply, stays off |
+| a | QMP PHY `okay`, vdda-phy L1B, vdda-pll L6B | boots, PHY probes |
+| b | a + dwc3 `usb3-phy` | boots, 480 Mbit/s as expected |
+| c1, c, c3, c6 | b + QMP pipe clock + `maximum-speed = "super-speed"` (± graph, interconnects, host-only) | **"hang"**: a dwc3 Oops, see below |
+| c7 | c1 with `super-speed-plus` | boots |
+| **c8** | c7 + orientation graph | **boots; USB 3 through the hub at 10/5 Gbit/s** |
 
-With `initcall_debug` on the screen (`scripts/build-usb3dbg.sh`), the last messages before the hang
-come at ~14 s, when the ADSP firmware boots and pmic_glink starts reporting the Type-C port. That is
-roughly when the role switch to device (towards the build host) starts the dwc3 gadget on the QMP
-pipe clock. pstore does not survive the forced reset, so there is no oops log.
+**The "hang" was an Oops caused by `maximum-speed = "super-speed"`.** On a DWC_usb31 core with
+`maximum_speed == USB_SPEED_SUPER`, `dwc3_core_init()` forces Gen1 by writing `LLUCTL` at offset
+`0xd024`. sm8350.dtsi maps the dwc3 core with `reg = <0 0x0a600000 0 0xcd00>`, so the read faults
+(`Unable to handle kernel paging request` in `dwc3_readl`). The Oops kills the deferred-probe
+worker. Every later probe (Wi-Fi, …) stalls, and with the display driver loaded the phone freezes. It
+looked like a hardware hang because pstore did not survive the forced reset.
+
+It was found with a small debug service (`scripts/usb3dbg.service` + `scripts/usb3dbg-dump.sh`). The
+service runs only when `usb3dbg` is on the kernel command line. It copies `dmesg` and the blocked tasks
+(sysrq-w) to `/data` every few seconds, so the log survives the long-press reset. Blacklisting `msm`
+for that run (`modprobe.blacklist=msm`) kept the phone alive long enough to write the log.
+
+Other findings on the way:
+- The gcc `clk_regmap_phy_mux` patch for the USB3 pipe clock source
+  (`scripts/apply-gcc-sm8350-usb3-phy-mux.py`, test only) is **not needed**: c8 works on the
+  unpatched production kernel.
+- In device mode towards a PC the link still trains at 480 Mbit/s, although the PHY is ready
+  (`PCS_STATUS1` PHYSTATUS clear, read with `scripts/qmpdump.sh`). This does not matter for the server
+  use case.
 
 ## Unpowered hub (still open)
 
