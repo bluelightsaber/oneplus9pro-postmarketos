@@ -197,3 +197,11 @@ Chronological notes from the bring-up (moved out of the README). Newest entries 
   over ssh on Ethernet.
 - The unpowered hub still does not attach: the port stays sink-only and sees no partner.
 - `build-pmos-image.sh` now applies `c8` by default (`USB3=1`); promotion after a soak.
+
+## 2026-11-13 — USB 3 in production
+
+- The USB 3 RAM image ran overnight without problems.
+- The final production image (`USB3=1`) passed `test-pmos.sh`, a 15-minute soak and the hub check. The
+  hub ran at 10 Gbit/s, Ethernet at 1 Gbit/s, Wi-Fi turned off by itself and the phone charged.
+- Promoted to boot_a with a backup of the previous USB 2 image; the reboot from flash came up clean.
+- In device mode towards a PC the link stays at USB 2. That does not matter for the server.

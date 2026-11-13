@@ -1,10 +1,11 @@
 # USB host mode (OTG): status and investigation
 
-**Status (2026-11-12, late): USB 3 works through a powered USB-C hub** in RAM-boot tests on the
-production kernel, with DT changes only (`scripts/usb3-dt.sh` stage `c8`, now the default in
+**Status (2026-11-13): USB 3 through a powered USB-C hub is in production**, on the stock
+postmarketOS kernel package plus our patches, with DT changes only (`scripts/usb3-dt.sh` stage `c8`, now the default in
 `scripts/build-pmos-image.sh`, `USB3=1`). The hub's VIA VL822 comes up at 10 Gbit/s, the RTL8153 RJ45
 adapter at 5 Gbit/s (1000 Mbit/s Ethernet link) and a USB 3 stick at 5 Gbit/s, in both cable
-orientations. Not in production yet (soak pending). USB 2 host with a powered hub works since patch
+orientations, and the hub charges the phone at the same time. Before promotion: automated RAM test,
+a 15-minute soak and a hub check on the final image. USB 2 host with a powered hub works since patch
 0105. An unpowered hub still does not attach.
 
 The goal is a USB-C hub with Ethernet (and later a USB disk) while the hub also charges the phone.
